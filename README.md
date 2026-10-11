@@ -13,8 +13,6 @@ An **NBA Showtime: NBA on NBC** frontend is also in the source, but its engine i
 
 **You need your own copy of each game. ROMs and disc images are not included.**
 
-These are **test builds**. They build and pass their automated tests, but gameplay on real hardware has only been partly checked. See [Status](#status).
-
 **[Releases](https://github.com/DevZer0D4Y/NativePorts/releases)**
 
 If you want to support me and remain up-to-date about this and other projects, you can in different ways:
@@ -60,7 +58,7 @@ Each game is a separate app with its own bundle identifier: `com.devz.ssf2t`, `c
 
 ### Windows
 
-1. Download the Windows ZIP from the [latest release](https://github.com/DevZer0D4Y/NativePorts/releases) and extract it. Keep each `.exe` together with its `SDL2.dll`.
+1. Download `NativePorts-Windows-x64.zip` from the [latest release](https://github.com/DevZer0D4Y/NativePorts/releases) and extract it. Keep each `.exe` together with its `SDL2.dll`.
 2. Run the game's `.exe`, then click **OPEN ROM ARCHIVE** or **OPEN DISC IMAGE** (or press **O**), or drag your game file into the window.
 3. For the arcade games, press **5** for a credit, then **1** to start. For the console games, press **1** (Start).
 
@@ -83,21 +81,22 @@ On Windows, the default keys are the arrow keys, **X C Z A S D** for the six act
 
 ## Status
 
-| Game | iOS | Windows | Notes |
-|---|---|---|---|
-| Super Street Fighter II Turbo 0.1.1 | Builds, tests pass | Builds, tests pass | |
-| Ultimate Mortal Kombat 3 0.1.1 | Builds, tests pass | Builds, tests pass | |
-| Slam 'n Jam '96 0.1.1 | Builds, tests pass | Builds, tests pass | |
-| Tony Hawk's Pro Skater 2 0.1.9 | Builds, tests pass | Builds, tests pass | iOS runs the SH4 interpreter (no JIT), so full speed isn't reached on every device yet. Windows uses the x86-64 JIT. |
-| NBA Showtime | Frontend only | Frontend only | Engine not finished, no build |
+| Game | Version | Platforms |
+|---|---|---|
+| Super Street Fighter II Turbo | 0.1.1 | iOS, Windows |
+| Ultimate Mortal Kombat 3 | 0.1.1 | iOS, Windows |
+| Slam 'n Jam '96 | 0.1.1 | iOS, Windows |
+| Tony Hawk's Pro Skater 2 | 0.1.9 | iOS, Windows |
+| NBA Showtime | — | Frontend only, engine not finished |
 
-Controllers are tested with virtual gamepads on both platforms. Multiplayer with physical controllers hasn't been verified yet.
+Known limitations:
 
-A true widescreen mode like NBA Hangtime's, which shows more of the game instead of stretching it, isn't done for any of these games. Each one needs its own game-specific patches. THPS2 has the core's widescreen cheat connected, but it isn't verified. Until then, COLOR SIDES and the FULL screen mode are the options.
+- THPS2 on iOS runs the Dreamcast CPU through an interpreter, since iOS doesn't allow a JIT, so it may not reach full speed on every device. Windows uses the x86-64 JIT.
+- A true widescreen mode like NBA Hangtime's, which shows more of the game instead of stretching it, isn't available yet. Each game needs its own patches. Until then, COLOR SIDES and the FULL screen mode are the options.
 
 ## Building
 
-Requires a Mac with **Xcode 16 or newer**, **Python 3** and **Make**. The test builds used Xcode 27.0. For the Windows and desktop builds you also need SDL2 (`brew install sdl2` for the macOS test build).
+Requires a Mac with **Xcode 16 or newer**, **Python 3** and **Make**. The release builds used Xcode 27.0. For the Windows and desktop builds you also need SDL2 (`brew install sdl2` for the macOS build).
 
 The first build downloads the pinned core sources into the ignored `vendor/` folder and applies the patches in [`patches/`](patches/). You can also run that step by itself:
 
