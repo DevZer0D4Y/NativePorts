@@ -1,0 +1,98 @@
+--- a/Makefile.split
++++ b/Makefile.split
+@@ -107,6 +107,22 @@
+ SOUNDS+=DISCRETE@
+ SOUNDS+=YM2610@
+ SOUNDS+=AY8910@
++
++# Dedicated CPS2 native port, plus shared bootstrap dependencies.
++ifneq (,$(filter $(INCLUDE_DRV),drv_ssf2t))
++ CPUS += M68000@ Z80@
++ SOURCES_C += $(CORE_DIR)/drivers/cps1.c $(CORE_DIR)/drivers/cps2.c \
++ $(CORE_DIR)/vidhrdw/cps1_vidhrdw.c $(CORE_DIR)/machine/cps2crypt.c $(CORE_DIR)/machine/kabuki.c \
++ $(CORE_DIR)/machine/pd4990a.c $(CORE_DIR)/machine/neocrypt.c \
++ $(CORE_DIR)/drivers/neogeo.c $(CORE_DIR)/vidhrdw/neogeo_vidhrdw.c
++ SOUNDS += YM2151_ALT@ OKIM6295@ QSOUND@
++endif
++
++ifneq (,$(filter $(INCLUDE_DRV),drv_umk3))
++ CPUS+=TMS34010@ ADSP2100@ ADSP2101@ ADSP2104@ ADSP2105@ ADSP2115@ TMS32031@ M6809@ M68000@ Z80@
++ SOUNDS+=YM2151_ALT@ HC55516@ OKIM6295@
++ SOURCES_C += $(CORE_DIR)/drivers/midwunit.c $(CORE_DIR)/machine/midwunit_machine.c $(CORE_DIR)/machine/midwayic.c $(CORE_DIR)/machine/midyunit_machine.c $(CORE_DIR)/vidhrdw/midyunit_vidhrdw.c $(CORE_DIR)/sndhrdw/williams_sndhrdw.c $(CORE_DIR)/sndhrdw/cage_sndhrdw.c $(CORE_DIR)/vidhrdw/midtunit_vidhrdw.c $(CORE_DIR)/sndhrdw/dcs.c $(CORE_DIR)/machine/pd4990a.c $(CORE_DIR)/machine/neocrypt.c $(CORE_DIR)/drivers/neogeo.c $(CORE_DIR)/vidhrdw/neogeo_vidhrdw.c
++endif
+ 
+ # drivers
+ ifneq (,$(filter $(INCLUDE_DRV),drv_1942 core_none))
+@@ -2656,8 +2672,6 @@
+ 	$(CORE_DIR)/libretro-deps/libFLAC/stream_decoder.c \
+ 	$(CORE_DIR)/libretro-deps/libFLAC/window.c
+ 
+-ifeq ($(STATIC_LINKING),1)
+-else
+ SOURCES_C += \
+ 	$(LIBRETRO_COMM_DIR)/compat/compat_posix_string.c \
+ 	$(LIBRETRO_COMM_DIR)/compat/compat_snprintf.c \
+@@ -2692,8 +2706,8 @@
+ 	$(CORE_DIR)/lib/zlib/uncompr.c \
+ 	$(CORE_DIR)/lib/zlib/unzip.c \
+ 	$(CORE_DIR)/lib/zlib/zutil.c
+-endif
+ 
++
+ ifeq ($(ZLIB_UNCOMPRESS), 1)
+ SOURCES_C += \
+ 	     $(CORE_DIR)/lib/zlib/uncompr.c
+@@ -2710,3 +2724,5 @@
+ 	SOURCES_ASM += $(CORE_DIR)/cpu/z80_drz80/drz80.s
+ 	SOURCES_C += $(CORE_DIR)/cpu/z80_drz80/drz80_z80.c
+ endif
++
++
+--- a/src/driver_split.c
++++ b/src/driver_split.c
+@@ -71,6 +71,13 @@
+ };
+ 
+ #else	/* DRIVER_RECURSIVE */
++
++#ifdef drv_umk3
++DRIVER(umk3)
++#endif
++#ifdef drv_ssf2t
++ DRIVER(ssf2t)
++#endif
+ 
+ #if defined(drv_1942) || defined(core_none)
+ 	/* 1942.c */
+@@ -968,3 +975,4 @@
+ #endif
+ 
+ #endif	/* DRIVER_RECURSIVE */
++
+--- a/src/lib/zlib/zutil.h
++++ b/src/lib/zlib/zutil.h
+@@ -118,7 +118,7 @@
+ #  endif
+ #endif
+ 
+-#if defined(MACOS) || defined(TARGET_OS_MAC)
++#if defined(MACOS) || (defined(TARGET_OS_MAC) && !defined(__APPLE__))
+ #  define OS_CODE  0x07
+ #  ifndef Z_SOLO
+ #    if defined(__MWERKS__) && __dest_os != __be_os && __dest_os != __win32_os
+--- a/src/mame2003/mame2003.c
++++ b/src/mame2003/mame2003.c
+@@ -418,6 +418,13 @@
+  
+ }
+ 
++int sf_save_nvram(void) {
++ mame_file *file;
++ if (!Machine || !Machine->drv || !Machine->drv->nvram_handler) return 0;
++ file=mame_fopen(Machine->gamedrv->name,0,FILETYPE_NVRAM,1);
++ if (!file) return 0;
++ (*Machine->drv->nvram_handler)(file,1); mame_fclose(file); return 1;
++}
+ void retro_unload_game(void)
+ {
+     mame_done();

@@ -1,0 +1,47 @@
+{
+  "title": "Super Street Fighter II Turbo",
+  "short": "SSF2T",
+  "core": "mame2003",
+  "players": 2,
+  "rom": "ssf2t.zip",
+  "labels": [
+    "LIGHT PUNCH",
+    "MEDIUM PUNCH",
+    "HEAVY PUNCH",
+    "LIGHT KICK",
+    "MEDIUM KICK",
+    "HEAVY KICK",
+    "COIN",
+    "START"
+  ],
+  "bits": [
+    2,
+    512,
+    2048,
+    1,
+    256,
+    8192,
+    4,
+    8
+  ],
+  "revision": "Euro 940223",
+  "widescreen_requirement": {
+    "reference": "NBA Hangtime 0.4.2 native port",
+    "gameplay": "Expanded horizontal view with original object proportions; game-specific drawing, culling, camera and HUD corrections where required.",
+    "menus": "Preserve menu proportions and fill unused side areas with color.",
+    "platforms": [
+      "iOS",
+      "Windows"
+    ],
+    "stretch_satisfies_requirement": false,
+    "status": "game_specific_patch_pending",
+    "completion_requires": [
+      "Verify extra scenery during gameplay without stretching or cropping",
+      "Verify camera and object visibility at both edges",
+      "Verify HUD placement and multiplayer views",
+      "Verify game menus have colored side areas",
+      "Verify live toggle and original view restoration",
+      "Verify with supported game image on iOS and Windows"
+    ]
+  }
+}

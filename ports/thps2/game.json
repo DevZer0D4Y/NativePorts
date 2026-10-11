@@ -1,0 +1,47 @@
+{
+  "title": "Tony Hawk\u2019s Pro Skater 2",
+  "short": "THPS2",
+  "core": "flycast",
+  "players": 2,
+  "rom": "thps2.chd",
+  "labels": [
+    "OLLIE",
+    "FLIP",
+    "GRIND",
+    "GRAB",
+    "LEFT TRIGGER",
+    "RIGHT TRIGGER",
+    "SELECT",
+    "START"
+  ],
+  "bits": [
+    1,
+    2,
+    512,
+    256,
+    1024,
+    2048,
+    0,
+    8
+  ],
+  "revision": "Dreamcast",
+  "widescreen_requirement": {
+    "reference": "NBA Hangtime 0.4.2 native port",
+    "gameplay": "Expanded horizontal view with original object proportions; game-specific drawing, culling, camera and HUD corrections where required.",
+    "menus": "Preserve menu proportions and fill unused side areas with color.",
+    "platforms": [
+      "iOS",
+      "Windows"
+    ],
+    "stretch_satisfies_requirement": false,
+    "status": "upstream_patch_connected_unverified",
+    "completion_requires": [
+      "Verify extra scenery during gameplay without stretching or cropping",
+      "Verify camera and object visibility at both edges",
+      "Verify HUD placement and multiplayer views",
+      "Verify game menus have colored side areas",
+      "Verify live toggle and original view restoration",
+      "Verify with supported game image on iOS and Windows"
+    ]
+  }
+}

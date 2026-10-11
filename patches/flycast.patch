@@ -1,0 +1,203 @@
+--- a/Makefile.common
++++ b/Makefile.common
+@@ -404,7 +404,7 @@
+ # compiles these libretro-common sources; building them again would duplicate
+ # symbols at link time. The headers stay -- they now match current upstream, so
+ # the declarations agree with the objects RetroArch provides.
+-ifneq ($(STATIC_LINKING), 1)
++ifneq ($(NATIVE_FRONTEND), 0)
+ SOURCES_C += $(LIBRETRO_COMM_DIR)/memmap/memalign.c \
+ 					$(LIBRETRO_COMM_DIR)/file/file_path.c \
+ 					$(LIBRETRO_COMM_DIR)/file/file_path_io.c \
+@@ -423,7 +423,7 @@
+ 
+ ifeq ($(NO_THREADS), 1)
+ else
+-ifneq ($(STATIC_LINKING), 1)
++ifneq ($(NATIVE_FRONTEND), 0)
+ 	SOURCES_C += $(LIBRETRO_COMM_DIR)/rthreads/rthreads.c \
+ 					$(LIBRETRO_COMM_DIR)/rthreads/retro_eventcount.c \
+ 					$(LIBRETRO_COMM_DIR)/queues/retro_spsc.c
+--- a/core/deps/libelf/elf32.cpp
++++ b/core/deps/libelf/elf32.cpp
+@@ -117,7 +117,7 @@
+ elf32_getProgramSegmentTable(struct Elf32_Header *elfFile)
+ {
+ 	struct Elf32_Header *fileHdr = elfFile;
+-	return (struct Elf32_Phdr *) (fileHdr->e_phoff + (long) elfFile);
++	return (struct Elf32_Phdr *) ((unsigned char *)elfFile + fileHdr->e_phoff);
+ }
+ 
+ /* Returns the number of program segments in this elf file. */
+--- a/core/hw/mem/_vmem.cpp
++++ b/core/hw/mem/_vmem.cpp
+@@ -655,6 +655,11 @@
+ /* Every mapping the game or the core reaches these pages through. */
+ static void vram_set_access(u32 addr, u32 size, int access)
+ {
++#if defined(TARGET_NO_EXCEPTIONS)
++	// This configuration uses content hashes and immediate RTT readback.
++	// Keep every host VRAM page writable, including during reset/teardown.
++	return;
++#endif
+ 	bool (* const set)(void *, std::size_t) = access == VRAM_OPEN ? mem_region_unlock
+ 		: access == VRAM_READ_ONLY ? mem_region_lock : mem_region_noaccess;
+ 
+--- a/core/hw/sh4/interpr/sh4_opcodes.cpp
++++ b/core/hw/sh4/interpr/sh4_opcodes.cpp
+@@ -1243,7 +1243,7 @@
+ }
+ 
+ void DYNACALL do_sqw_mmu(u32 dst) { do_sqw<true>(dst); }
+-#if HOST_CPU != CPU_ARM && HOST_CPU != CPU_ARM64
++#if (HOST_CPU != CPU_ARM && HOST_CPU != CPU_ARM64) || FEAT_SHREC == DYNAREC_NONE
+ //yes, this micro optimization makes a difference
+ extern "C" void DYNACALL do_sqw_nommu_area_3(u32 dst,u8* sqb)
+ {
+--- a/core/libretro/libretro.cpp
++++ b/core/libretro/libretro.cpp
+@@ -2565,7 +2565,10 @@
+ #ifndef NO_MMU
+     mmu_flush_table();
+ #endif
++
++#if FEAT_SHREC == DYNAREC_JIT
+     bm_Reset();
++#endif
+     custom_texture.Terminate();
+ 
+     result = dc_unserialize(&data_ptr, &total_size, size) ;
+@@ -3810,6 +3813,12 @@
+ int get_mic_data(u8* buffer) { return 0; }
+ int push_vmu_screen(u8* buffer) { return 0; }
+ 
++void os_FatalError(const char *reason, const char *file, int line)
++{
++   ERROR_LOG(COMMON, "FATAL: %s:%d: %s", file, line, reason);
++   os_DebugBreak();
++}
++
+ void os_DebugBreak(void)
+ {
+ 	ERROR_LOG(COMMON, "DEBUGBREAK!");
+--- a/core/libretro/vmem_utils.cpp
++++ b/core/libretro/vmem_utils.cpp
+@@ -1,3 +1,6 @@
++#if defined(__APPLE__)
++#include <libkern/OSCacheControl.h>
++#endif
+ #ifndef _WIN32
+ // Implementation of the vmem related function for POSIX-like platforms.
+ // There's some minimal amount of platform specific hacks to support
+@@ -459,7 +462,7 @@
+ 
+ #if defined(__APPLE__)
+ 	// Header file says this is equivalent to: sys_icache_invalidate(start, end - start);
+-	sys_cache_control(kCacheFunctionPrepareForExecution, start, end - start);
++	sys_icache_invalidate(start, (char *)end - (char *)start);
+ #else
+ 	// Don't rely on GCC's __clear_cache implementation, as it caches
+ 	// icache/dcache cache line sizes, that can vary between cores on
+@@ -669,7 +672,7 @@
+ 
+ // Allocates a bunch of memory (page aligned and page-sized)
+ void vmem_platform_ondemand_page(void *address, unsigned size_bytes) {
+-	verify(VirtualAlloc(address, size_bytes, MEM_COMMIT, PAGE_READWRITE));
++	verify(VirtualAlloc(address, size_bytes, MEM_COMMIT, PAGE_READWRITE) != NULL);
+ }
+ 
+ /// Creates mappings to the underlying file including mirroring sections
+--- a/core/rend/TexCache.cpp
++++ b/core/rend/TexCache.cpp
+@@ -232,6 +232,12 @@
+ 
+ void libCore_vramlock_Lock(u32 start_offset64, u32 end_offset64, BaseTextureCacheData *texture)
+ {
++#if defined(TARGET_NO_EXCEPTIONS)
++	// Without a fault handler, protecting VRAM either fails on the host's
++	// page alignment or crashes on the game's next write. Track contents.
++	texture->vram_hash = texture->ComputeVramHash();
++	return;
++#endif
+ 	if (end_offset64>(VRAM_SIZE-1))
+ 	{
+ 		WARN_LOG(PVR, "vramlock_Lock_64: end_offset64>(VRAM_SIZE-1) \n Tried to lock area out of vram , possibly bug on the pvr plugin");
+@@ -452,10 +458,13 @@
+ 		else if (tcw.PixelFmt == PixelPal8 && palette_hash != pal_hash_256[tcw.PalSelect >> 4])
+ 			rc = true;
+ 	}
+-	/* Frequently-updated texture running unprotected (see Update): compare the
+-	 * content hash of the vram range instead of relying on a write fault. */
+-	if (!rc && lock_block == nullptr && Updates >= FREQUENT_UPDATE_COUNT
+-			&& ComputeVramHash() != vram_hash)
++	/* Compare VRAM contents on hosts without a fault handler, and for
++	 * frequently-updated textures left unprotected by Update(). */
++	if (!rc && lock_block == nullptr &&
++#if !defined(TARGET_NO_EXCEPTIONS)
++			Updates >= FREQUENT_UPDATE_COUNT &&
++#endif
++			ComputeVramHash() != vram_hash)
+ 		rc = true;
+ 
+ 	return rc;
+--- a/core/rend/gles/gles.cpp
++++ b/core/rend/gles/gles.cpp
+@@ -52,7 +52,7 @@
+ #if pp_Gouraud == 0
+ #define INTERPOLATION flat
+ #else
+-#define INTERPOLATION smooth
++#define INTERPOLATION // Default perspective-correct interpolation; accepted by Apple GLES3.
+ #endif
+ #else
+ #define INTERPOLATION
+@@ -146,7 +146,7 @@
+ #if pp_Gouraud == 0
+ #define INTERPOLATION flat
+ #else
+-#define INTERPOLATION smooth
++#define INTERPOLATION // Default perspective-correct interpolation; accepted by Apple GLES3.
+ #endif
+ #else
+ #define INTERPOLATION
+--- a/core/rend/gles/gltex.cpp
++++ b/core/rend/gles/gltex.cpp
+@@ -537,6 +537,11 @@
+     	texture_data->dirty = 0;
+       libCore_vramlock_Lock(texture_data->sa_tex, texture_data->sa + texture_data->size - 1, texture_data);
+       rtt_watch_add(&watch, &rtt_gl_backend);
++#if defined(TARGET_NO_EXCEPTIONS)
++      // rtt_watch_add wrote the rendered pixels into VRAM immediately.
++      // Remember that content so the GPU texture survives unchanged lookups.
++      texture_data->vram_hash = texture_data->ComputeVramHash();
++#endif
+     }
+     gl.rtt.tex = 0;
+ 
+--- a/core/types.h
++++ b/core/types.h
+@@ -447,7 +447,8 @@
+ 
+ 
+ void os_DebugBreak(void);
+-#define dbgbreak os_DebugBreak()
++void os_FatalError(const char *reason, const char *file, int line);
++#define dbgbreak os_FatalError("debug break", __FILE__, __LINE__)
+ 
+ #ifdef _MSC_VER
+ #pragma warning( disable : 4127 4996 /*4244*/)
+@@ -456,12 +457,12 @@
+ #endif
+ 
+ #ifndef NO_VERIFY
+-#define verify(x) if((x)==false){ dbgbreak;}
++#define verify(x) if((x)==false){ os_FatalError("verification failed: " #x, __FILE__, __LINE__);}
+ #else
+ #define verify(x) if((x)==false){ }
+ #endif
+ 
+-#define die(reason) { dbgbreak;}
++#define die(reason) { os_FatalError(reason, __FILE__, __LINE__);}
+ 
+ 
+ //will be removed sometime soon

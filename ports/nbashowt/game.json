@@ -1,0 +1,70 @@
+{
+  "title": "NBA Showtime - NBA on NBC",
+  "short": "NBAShowtime",
+  "core": "mame",
+  "players": 4,
+  "rom": "nbashowt.zip",
+  "labels": [
+    "SHOOT",
+    "PASS",
+    "TURBO",
+    "SPIN",
+    "DUNK",
+    "SHOVE",
+    "COIN",
+    "START"
+  ],
+  "bits": [
+    1,
+    256,
+    2,
+    0,
+    3,
+    258,
+    4,
+    8
+  ],
+  "revision": "Arcade ver 2.0",
+  "widescreen_requirement": {
+    "reference": "NBA Hangtime 0.4.2 native port",
+    "gameplay": "Expanded horizontal view with original object proportions; game-specific drawing, culling, camera and HUD corrections where required.",
+    "menus": "Preserve menu proportions and fill unused side areas with color.",
+    "platforms": [
+      "iOS",
+      "Windows"
+    ],
+    "stretch_satisfies_requirement": false,
+    "status": "game_specific_patch_pending",
+    "completion_requires": [
+      "Verify extra scenery during gameplay without stretching or cropping",
+      "Verify camera and object visibility at both edges",
+      "Verify HUD placement and multiplayer views",
+      "Verify game menus have colored side areas",
+      "Verify live toggle and original view restoration",
+      "Verify with supported game image on iOS and Windows"
+    ]
+  },
+  "ui_reference": "NBA Hangtime 0.4.2",
+  "controller_defaults": {
+    "shoot": "X",
+    "pass": "A",
+    "turbo": [
+      "RT",
+      "LT",
+      "RB"
+    ],
+    "spin_or_steal": "B",
+    "dunk_or_pick": "Y",
+    "shove_or_isolate": "LB",
+    "coin_or_select": "VIEW",
+    "start": "Menu tap",
+    "pause": "Menu hold / Home"
+  },
+  "player_order": [
+    1,
+    3,
+    2,
+    4
+  ],
+  "input_shortcuts": "Hangtime timed double turbo and turbo-leading shoot/pass combinations; gameplay unverified."
+}

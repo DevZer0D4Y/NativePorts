@@ -1,0 +1,296 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		4E948E4F8ECC640EE138F6C4 /* HangtimeCore.c in Sources */ = {isa = PBXBuildFile; fileRef = 0D32A2859F6635F721CCC3E6 /* HangtimeCore.c */; };
+		84D9009EDB29E023EC0D2C0A /* Menus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E90BEECA87EA2A0930408AA /* Menus.swift */; };
+		A10000000000000000000004 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* Assets.xcassets */; };
+		A249DDA19BB41A53BB8F2494 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74AB5674FCE13639AB0C1E2A /* App.swift */; };
+		BC8F57BD7C499E1F0124DBFD /* TouchControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 536A8A7E2DECDF89F064700B /* TouchControls.swift */; };
+		C10000000000000000000002 /* Renderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000001 /* Renderer.swift */; };
+		C10000000000000000000004 /* PortScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000003 /* PortScreenView.swift */; };
+		C10000000000000000000006 /* NewPixie.metal in Resources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000005 /* NewPixie.metal */; };
+		E927E4E822DD4995539715A0 /* ROMAudit.c in Sources */ = {isa = PBXBuildFile; fileRef = B9DBC298B40D378F94D5811A /* ROMAudit.c */; };
+		F027F7B14F265578D1941FBD /* Input.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F1C77A8529F4AD64D8A168 /* Input.swift */; };
+		FAE2D8907F468D12F1B9BD1E /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82E6B2ED4144A380862341E6 /* Settings.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0D32A2859F6635F721CCC3E6 /* HangtimeCore.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = HangtimeCore.c; sourceTree = "<group>"; };
+		3369DAFFDF1BFEB15563947E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		3E90BEECA87EA2A0930408AA /* Menus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Menus.swift; sourceTree = "<group>"; };
+		536A8A7E2DECDF89F064700B /* TouchControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TouchControls.swift; sourceTree = "<group>"; };
+		59CD0694C42C6339287E78FF /* HangtimeCore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HangtimeCore.h; sourceTree = "<group>"; };
+		74AB5674FCE13639AB0C1E2A /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
+		7D1043473D55BFA90E8530D3 /* SSF2T.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = SSF2T.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		82E6B2ED4144A380862341E6 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
+		A10000000000000000000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B9DBC298B40D378F94D5811A /* ROMAudit.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ROMAudit.c; sourceTree = "<group>"; };
+		C10000000000000000000001 /* Renderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Renderer.swift; sourceTree = "<group>"; };
+		C10000000000000000000003 /* PortScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortScreenView.swift; sourceTree = "<group>"; };
+		C10000000000000000000005 /* NewPixie.metal */ = {isa = PBXFileReference; lastKnownFileType = text; path = NewPixie.metal; sourceTree = "<group>"; };
+		D4F1C77A8529F4AD64D8A168 /* Input.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Input.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7561BFB015D8F536760CB671 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		64292B1C2B2E13EAD8788FC8 /* Hangtime */ = {
+			isa = PBXGroup;
+			children = (
+				C10000000000000000000001 /* Renderer.swift */,
+				C10000000000000000000003 /* PortScreenView.swift */,
+				C10000000000000000000005 /* NewPixie.metal */,
+				A10000000000000000000003 /* Assets.xcassets */,
+				74AB5674FCE13639AB0C1E2A /* App.swift */,
+				D4F1C77A8529F4AD64D8A168 /* Input.swift */,
+				82E6B2ED4144A380862341E6 /* Settings.swift */,
+				536A8A7E2DECDF89F064700B /* TouchControls.swift */,
+				3E90BEECA87EA2A0930408AA /* Menus.swift */,
+				0D32A2859F6635F721CCC3E6 /* HangtimeCore.c */,
+				B9DBC298B40D378F94D5811A /* ROMAudit.c */,
+				59CD0694C42C6339287E78FF /* HangtimeCore.h */,
+				3369DAFFDF1BFEB15563947E /* Info.plist */,
+			);
+			path = Hangtime;
+			sourceTree = "<group>";
+		};
+		DC76E9F0C0006E8F919E0C51 = {
+			isa = PBXGroup;
+			children = (
+				64292B1C2B2E13EAD8788FC8 /* Hangtime */,
+				FBDC4F23F93125BBEEAE800C /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		FBDC4F23F93125BBEEAE800C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7D1043473D55BFA90E8530D3 /* SSF2T.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0E8A3AD980EC179856012B7E /* Hangtime */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C57128001CE614BF8549D6BB /* Build configuration list for PBXNativeTarget "Hangtime" */;
+			buildPhases = (
+				94A0426E8D3203DA5468CCF0 /* Build pinned arcade core */,
+				BCE16DD0260827ECF338C787 /* Sources */,
+				7561BFB015D8F536760CB671 /* Frameworks */,
+				0189424A5A60FED329FA868E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Hangtime;
+			productName = Hangtime;
+			productReference = 7D1043473D55BFA90E8530D3 /* SSF2T.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		98F54143AB4E86B28C3AFEE0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = 862894B703A6DEDF96A9DD6C /* Build configuration list for PBXProject "Hangtime" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = DC76E9F0C0006E8F919E0C51;
+			productRefGroup = FBDC4F23F93125BBEEAE800C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0E8A3AD980EC179856012B7E /* Hangtime */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0189424A5A60FED329FA868E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000004 /* Assets.xcassets in Resources */,
+				C10000000000000000000006 /* NewPixie.metal in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		94A0426E8D3203DA5468CCF0 /* Build pinned arcade core */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Build pinned arcade core";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/scripts/build-core.py\"";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BCE16DD0260827ECF338C787 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C10000000000000000000002 /* Renderer.swift in Sources */,
+				C10000000000000000000004 /* PortScreenView.swift in Sources */,
+				A249DDA19BB41A53BB8F2494 /* App.swift in Sources */,
+				F027F7B14F265578D1941FBD /* Input.swift in Sources */,
+				FAE2D8907F468D12F1B9BD1E /* Settings.swift in Sources */,
+				BC8F57BD7C499E1F0124DBFD /* TouchControls.swift in Sources */,
+				84D9009EDB29E023EC0D2C0A /* Menus.swift in Sources */,
+				4E948E4F8ECC640EE138F6C4 /* HangtimeCore.c in Sources */,
+				E927E4E822DD4995539715A0 /* ROMAudit.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		639A7CA24D39909E713B47F7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_BITCODE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../../../vendor/mame2003-plus/src/libretro-common/include",
+					"$(SRCROOT)/../../../vendor/mame2003-plus/src/lib/zlib",
+				);
+				INFOPLIST_FILE = Hangtime/Info.plist;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"$(SRCROOT)/../../../.build/ssf2t/$(PLATFORM_NAME)/libcore.a",
+					"-lz",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.devz.ssf2t;
+				PRODUCT_NAME = SSF2T;
+				SWIFT_OBJC_BRIDGING_HEADER = Hangtime/HangtimeCore.h;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		7082CC0B6FC1282FCEABD07A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_BITCODE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../../../vendor/mame2003-plus/src/libretro-common/include",
+					"$(SRCROOT)/../../../vendor/mame2003-plus/src/lib/zlib",
+				);
+				INFOPLIST_FILE = Hangtime/Info.plist;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"$(SRCROOT)/../../../.build/ssf2t/$(PLATFORM_NAME)/libcore.a",
+					"-lz",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.devz.ssf2t;
+				PRODUCT_NAME = SSF2T;
+				SWIFT_OBJC_BRIDGING_HEADER = Hangtime/HangtimeCore.h;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		89E1FD6268CC0F221A2BE178 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = singlefile;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		E6DE6C99132752C914FEF632 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = YES;
+				DEPLOYMENT_POSTPROCESSING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_OPTIMIZATION_LEVEL = s;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				ONLY_ACTIVE_ARCH = NO;
+				SDKROOT = iphoneos;
+				STRIP_INSTALLED_PRODUCT = YES;
+				STRIP_STYLE = "non-global";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		862894B703A6DEDF96A9DD6C /* Build configuration list for PBXProject "Hangtime" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				89E1FD6268CC0F221A2BE178 /* Debug */,
+				E6DE6C99132752C914FEF632 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C57128001CE614BF8549D6BB /* Build configuration list for PBXNativeTarget "Hangtime" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7082CC0B6FC1282FCEABD07A /* Debug */,
+				639A7CA24D39909E713B47F7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 98F54143AB4E86B28C3AFEE0 /* Project object */;
+}

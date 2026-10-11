@@ -1,0 +1,41 @@
+# Emulator cores and toolchains, downloaded by scripts/fetch_cores.py or extracted by hand
+/vendor/
+
+# Build output
+/.build/
+/dist/
+DerivedData*/
+build/
+xcuserdata/
+com.apple.DeveloperTools/
+*.o
+*.a
+*.dylib
+*.exe
+*.dll
+*.ipa
+*.app/
+*.dSYM/
+*.log
+
+# Game files: never commit them
+*.zip
+*.chd
+*.cue
+*.bin
+*.iso
+*.gdi
+*.cdi
+*.7z
+*.srm
+*.nv
+
+# Signing material
+*.mobileprovision
+*.p12
+*.cer
+
+.DS_Store
+
+__pycache__/
+*.pyc
