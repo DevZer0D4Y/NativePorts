@@ -131,7 +131,7 @@ final class CRTView: MTKView, MTKViewDelegate {
         let height = fill ? h : min(h, w / aspect)
         let viewport = MTLViewport(originX: (w - width) / 2, originY: (h - height) / 2, width: width, height: height, znear: 0, zfar: 1)
         encode(c, target: drawable.texture, source: crt ? targets[feedbackIndex] : input,
-               mode: crt ? 4 : (smooth ? 5 : 0), viewport: viewport, clear: colorSides ? clearColor : MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1))
+               mode: crt ? 4 : (smooth ? 5 : 0), viewport: viewport, clear: colorSides && viewport.originY < 1 ? clearColor : MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1))
         // Feedback passes stay ordered on this queue. CPU uploads reuse only
         // a slot whose last reader has completed, so no per-frame GPU drain.
         if uploadSlot >= 0 { uploads[uploadSlot] = c }

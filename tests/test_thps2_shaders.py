@@ -3,13 +3,13 @@ from pathlib import Path
 import os, re, subprocess
 
 root = Path(__file__).resolve().parents[1]
-work = root.parent / 'thps2-shader-validation'
+work = root / ".build" / 'thps2-shader-validation'
 work.mkdir(exist_ok=True)
 source = (root / 'vendor/flycast/core/rend/gles/gles.cpp').read_text()
 templates = {}
 for name in ['VertexShaderSource', 'PixelPipelineShader', 'ModifierVolumeShader']:
     templates[name] = re.search(r'const char\*\s*' + name + r'\s*=\s*R"\((.*?)\)";', source, re.S).group(1)
-validator = root.parent / 'tools/glslang/glslangValidator'
+validator = Path(os.environ.get("GLSLANG_VALIDATOR", root.parent / "work/tools/glslang/glslangValidator"))
 env = dict(os.environ, DYLD_LIBRARY_PATH=str(validator.parent / 'lib'))
 cases = [[0] * 14, [1] * 14]
 for index in range(14):

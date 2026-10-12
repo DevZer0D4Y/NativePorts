@@ -36,6 +36,7 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
     private let controls = ControlsView()
     private let startScreen = StartScreenView()
     private let toast = ToastView()
+    private let crtButton = UIButton(type: .system)
     private let gamepads = GamepadHub()
     private var sequencers = [ActionSequencer](repeating: ActionSequencer(), count: 4)
     private var pauseMenu: PauseMenuView?
@@ -73,12 +74,21 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
             interaction.handledEventTypes = .gamepad
             view.addInteraction(interaction)
         }
-        view.backgroundColor = UIColor(red: 0.04, green: 0.07, blue: 0.15, alpha: 1)
+        view.backgroundColor = .black
         view.addSubview(screen)
         view.addSubview(startScreen)
         controls.isHidden = true
         view.addSubview(controls)
         view.addSubview(toast)
+        var crtStyle = UIButton.Configuration.filled()
+        crtStyle.baseBackgroundColor = UIColor.black.withAlphaComponent(0.75)
+        crtStyle.baseForegroundColor = .white
+        crtStyle.cornerStyle = .capsule
+        crtButton.configuration = crtStyle
+        crtButton.accessibilityLabel = "CRT filter"
+        crtButton.addTarget(self, action: #selector(toggleCRT), for: .touchUpInside)
+        crtButton.isHidden = true
+        view.addSubview(crtButton)
         startScreen.onImport = { [weak self] in self?.importROM() }
         controls.onPause = { [weak self] in self?.openPauseMenu() }
         controls.onActionPressed = { [weak self] action in self?.sequencers[0].trigger(action) }
@@ -102,6 +112,8 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let bounds = view.bounds
+        let safe = view.safeAreaInsets
+        crtButton.frame = CGRect(x: bounds.width - safe.right - 108, y: safe.top + 12, width: 96, height: 44)
         for overlay in [startScreen, controls, pauseMenu, tutorial, editor] as [UIView?] { overlay?.frame = bounds }
         layoutScreen()
     }
@@ -118,6 +130,8 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
         refreshControllerHints()
         screen.colorSides = settings.colorSides
         screen.crt = settings.crtMode == 1
+        crtButton.setTitle(screen.crt ? "CRT ON" : "CRT OFF", for: .normal)
+        crtButton.accessibilityValue = screen.crt ? "On" : "Off"
         ht_set_widescreen(settings.gameWidescreen)
         let filter: CALayerContentsFilter = settings.smoothPixels ? .linear : .nearest
         screen.layer.magnificationFilter = filter; screen.layer.minificationFilter = filter
@@ -186,6 +200,7 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
         guard !playing else { return }
         guard ht_start(url.path, documents.path) else { showError(String(cString: ht_error())); return }
         playing = true
+        crtButton.isHidden = false
         startScreen.isHidden = true; controls.isHidden = false
         view.setNeedsLayout()
         do {
@@ -207,6 +222,12 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
         } else {
             toast.show(controls.touchControlsHidden ? "PRESS START TO PLAY" : "TAP START TO PLAY", duration: 4)
         }
+    }
+
+    @objc private func toggleCRT() {
+        settings.crtMode = settings.crtMode == 1 ? 0 : 1
+        applySettings()
+        toast.show(settings.crtMode == 1 ? "CRT FILTER ON" : "CRT FILTER OFF", duration: 1)
     }
 
     @objc private func tick(_ link: CADisplayLink) {

@@ -43,6 +43,25 @@
  	bool (* const set)(void *, std::size_t) = access == VRAM_OPEN ? mem_region_unlock
  		: access == VRAM_READ_ONLY ? mem_region_lock : mem_region_noaccess;
  
+--- a/core/hw/sh4/interpr/sh4_interpreter.cpp
++++ b/core/hw/sh4/interpr/sh4_interpreter.cpp
+@@ -41,6 +41,16 @@
+ 	u32 addr = next_pc;
+ 	next_pc += 2;
+ 
++#if defined(IOS)
++	/* Only bypass the dispatcher for ordinary, uncached main RAM reads.
++	 * Keep the MMU/icache handlers, device fetches and all guest timing.
++	 * Read live RAM so self-modifying code remains visible. */
++	if (IReadMem16 == &_vmem_ReadMem16 && IsOnRam(addr)) {
++		u16 op;
++		memcpy(&op, &mem_b[addr & RAM_MASK], sizeof op);
++		return op;
++	}
++#endif
+ 	return IReadMem16(addr);
+ }
+ 
 --- a/core/hw/sh4/interpr/sh4_opcodes.cpp
 +++ b/core/hw/sh4/interpr/sh4_opcodes.cpp
 @@ -1243,7 +1243,7 @@
@@ -140,6 +159,72 @@
  		rc = true;
  
  	return rc;
+--- a/core/rend/gles/gldraw.cpp
++++ b/core/rend/gles/gldraw.cpp
+@@ -1,6 +1,7 @@
+ #define PVR_REGS_FOR_RENDERER	// see hw/pvr/pvr_regs.h
+ #include "gles.h"
+ #include "rend/shadows.h"
++#include "reios/reios.h"
+ 
+ /*
+ 
+@@ -99,6 +100,23 @@
+ 	}
+ 	else
+ 		glcache.Disable(GL_SCISSOR_TEST);
++}
++
++/* THPS2 projection cheats widen the world but leave 2D screen coordinates
++ * unchanged. Keep flat, depth-independent overlays in the central 4:3 area. */
++static bool thps2_hud(const PolyParam *gp)
++{
++    if (pvrrc.isRTT || !settings.rend.WidescreenGameHacks || !gp->pcw.Texture ||
++        gp->isp.DepthMode != 7 || gp->count < 3 ||
++        (strncmp(ip_meta.product_number, "T13006N", 7) && strncmp(ip_meta.product_number, "T13008D", 7)))
++        return false;
++    const float z = pvrrc.verts.head()[pvrrc.idx.head()[gp->first]].z;
++    for (u32 i = 0; i < gp->count; ++i) {
++        const Vertex &v = pvrrc.verts.head()[pvrrc.idx.head()[gp->first + i]];
++        if (v.z != z || v.x < 0 || v.x > 640 || v.y < 0 || v.y > 480)
++            return false;
++    }
++    return true;
+ }
+ 
+ template <u32 Type, bool SortingEnabled>
+@@ -138,6 +156,7 @@
+ 								  shadowed);
+ 
+ 	glcache.UseProgram(CurrentShader->program);
++	glUniform1f(CurrentShader->port_hud_scale, thps2_hud(gp) ? 0.75f : 1.0f);
+ 	if (CurrentShader->trilinear_alpha != -1)
+ 		glUniform1f(CurrentShader->trilinear_alpha, ShaderUniforms.trilinear_alpha);
+ 	if (palette)
+@@ -779,6 +798,7 @@
+ 
+ 	PipelineShader *shader = GetProgram(false, false, true, false, true, 0, false, 2, false, false, false, false, false);
+ 	glcache.UseProgram(shader->program);
++	glUniform1f(shader->port_hud_scale, 1.f);
+ 
+ 	glActiveTexture(GL_TEXTURE0);
+ 	glcache.BindTexture(GL_TEXTURE_2D, texId);
+@@ -912,6 +932,7 @@
+ 	SetupMainVBO();
+ 	PipelineShader *shader = GetProgram(0, false, 1, 1, 0, 0, 0, 2, false, false, false, false, false);
+ 	glcache.UseProgram(shader->program);
++	glUniform1f(shader->port_hud_scale, 1.f);
+ 
+ 	{
+ 		struct Vertex vertices[] = {
+@@ -1006,6 +1027,7 @@
+ 	SetupMainVBO();
+ 	PipelineShader *shader = GetProgram(0, false, 1, 1, 0, 0, 0, 2, false, false, false, false, false);
+ 	glcache.UseProgram(shader->program);
++	glUniform1f(shader->port_hud_scale, 1.f);
+ 
+ 	{
+ 		struct Vertex vertices[] = {
 --- a/core/rend/gles/gles.cpp
 +++ b/core/rend/gles/gles.cpp
 @@ -52,7 +52,7 @@
@@ -151,7 +236,26 @@
  #endif
  #else
  #define INTERPOLATION
-@@ -146,7 +146,7 @@
+@@ -61,6 +61,7 @@
+ /* Vertex constants*/ 
+ uniform highp vec4      depth_scale;
+ uniform highp mat4 normal_matrix;
++uniform highp float port_hud_scale;
+ uniform highp float sp_FOG_DENSITY;
+ 
+ /* Vertex input */
+@@ -81,7 +82,9 @@
+ 	vtx_base = in_base;
+ 	vtx_offs = in_offs;
+ 	vtx_uv = in_uv;
+-	highp vec4 vpos = normal_matrix * in_pos;
++	highp vec4 screen_pos = in_pos;
++	screen_pos.x = 320.0 + (screen_pos.x - 320.0) * port_hud_scale;
++	highp vec4 vpos = normal_matrix * screen_pos;
+ 	vpos.w = 1.0 / vpos.z;
+ #if TARGET_GL != GLES2
+    vpos.z = vpos.w;
+@@ -146,7 +149,7 @@
  #if pp_Gouraud == 0
  #define INTERPOLATION flat
  #else
@@ -160,6 +264,14 @@
  #endif
  #else
  #define INTERPOLATION
+@@ -690,6 +693,7 @@
+ 		s->fog_clamp_max = -1;
+ 	}
+ 	s->normal_matrix = glGetUniformLocation(s->program, "normal_matrix");
++	s->port_hud_scale = glGetUniformLocation(s->program, "port_hud_scale");
+ 	s->shade_scale_factor = glGetUniformLocation(s->program, "shade_scale_factor");
+ 
+ 	ShaderUniforms.Set(s);
 --- a/core/rend/gles/gltex.cpp
 +++ b/core/rend/gles/gltex.cpp
 @@ -537,6 +537,11 @@
