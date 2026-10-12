@@ -11,27 +11,35 @@ vertex V crtVertex(uint id [[vertex_id]]) {
 }
 struct Params { float2 sourceSize;float2 outputSize;float frame;int mode; };
 // NewPixie CRT by Mattias Gustavsson (2016), Slang adaptation by hunterk.
-// Native adaptation: same four passes, default parameters, optional frame artwork omitted.
+// Native adaptation: same four passes and default parameters, except CURVATURE.
+// The upstream shader overscans the picture and hides its edges under bezel
+// artwork; without the bezel that overscan sampled outside the frame and smeared
+// the edge pixels. Here the picture maps 1:1 to the screen and everything outside
+// the curved tube is black.
 // See licenses/NewPixie-MIT.txt. Input UV is top-to-bottom on both backends.
+#define CURVATURE 1.0
+float inside(float2 tc) {
+    float2 a=step(float2(0.0),tc)*step(tc,float2(1.0));
+    return a.x*a.y;
+}
 float3 tsample(texture2d<float> tex, float2 tc) {
-    tc=tc*float2(1.025,0.92)+float2(-0.0125,0.04);
-    return pow(abs(sampleTex(tex,float2(tc.x,1.0-tc.y)).rgb),float3(2.2))*1.25;
+    return pow(abs(sampleTex(tex,float2(tc.x,1.0-tc.y)).rgb),float3(2.2))*1.25*inside(tc);
 }
 float3 filmic(float3 c) {
     float3 x=max(float3(0.0),c-0.004);
     return (x*(6.2*x+0.5))/(x*(6.2*x+1.7)+0.06);
 }
 float2 curve(float2 uv) {
-    uv=(uv-0.5)*float2(0.925,1.095)*2.0;
+    uv=(uv-0.5)*float2(0.925,1.095)*CURVATURE;
     uv.x*=1.0+pow(abs(uv.y)/4.0,2.0);
     uv.y*=1.0+pow(abs(uv.x)/3.0,2.0);
-    return (uv/2.0+0.5)*0.92+0.04;
+    return uv/(float2(0.925,1.095)*CURVATURE)+0.5;
 }
 float noise(float2 co) { return fract(sin(dot(co,float2(12.9898,78.233)))*43758.5453); }
 float4 newpixie(texture2d<float> backbuffer, texture2d<float> blurbuffer, float2 inputUV, float2 resolution, float frame) {
     float2 uv=float2(inputUV.x,1.0-inputUV.y);
     float2 curved=mix(curve(uv),uv,0.4);
-    float2 scuv=curved*1.101-0.0505+float2(0.003,-0.001);
+    float2 scuv=curved;
     float x=sin(uv.y*resolution.y*1.5)/resolution.x*0.25;
     float time=fmod(frame,640.0);
     float3 col;
@@ -62,7 +70,10 @@ float4 newpixie(texture2d<float> backbuffer, texture2d<float> blurbuffer, float2
     float2 seed=curved*resolution;
     col-=0.015*pow(float3(noise(seed+time),noise(seed+time*2.0),noise(seed+time*3.0)),float3(1.5));
     col*=1.0-0.004*(sin(50.0*time+curved.y*2.0)*0.5+0.5);
-    return float4(col,1.0);
+    // Antialiased tube edge, about one output pixel wide.
+    float2 edge=1.5/resolution;
+    float2 m=smoothstep(float2(0.0),edge,curved)*smoothstep(float2(0.0),edge,1.0-curved);
+    return float4(max(col,float3(0.0))*m.x*m.y,1.0);
 }
 float4 blur9(texture2d<float> tex,float2 uv,float2 stepUV) {
     float4 c=sampleTex(tex,uv)*0.2270270270;
@@ -79,7 +90,7 @@ fragment float4 crtFragment(V v [[stage_in]], texture2d<float> src [[texture(0)]
  if(p.mode==2) return blur9(src,v.uv,float2(1.0/p.sourceSize.x,0));
  if(p.mode==3) return blur9(src,v.uv,float2(0,1.0/p.sourceSize.y));
  if(p.mode==4) return newpixie(src,blur,v.uv,p.outputSize,p.frame);
- if(p.mode==5) return sampleTex(src,v.uv);
+ if(p.mode==5)return sampleTex(src,v.uv);
  constexpr sampler nearestSampler(coord::normalized,address::clamp_to_edge,filter::nearest);
  return src.sample(nearestSampler,v.uv);
 }

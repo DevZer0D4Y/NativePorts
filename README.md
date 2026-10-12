@@ -4,10 +4,10 @@ Native iPhone, iPad and Windows ports of four classic games, each running its or
 
 | Game | Original | Core | Players | Game file | Version |
 |---|---|---|---:|---|---|
-| **Super Street Fighter II Turbo** | Capcom CPS2 arcade, Euro 940223 | [MAME 2003-Plus](https://github.com/libretro/mame2003-plus-libretro) | 2 | `ssf2t.zip` | 0.1.1 |
-| **Ultimate Mortal Kombat 3** | Midway Wolf-unit arcade, rev 1.2 | [MAME 2003-Plus](https://github.com/libretro/mame2003-plus-libretro) | 2 | `umk3.zip` | 0.1.1 |
-| **Slam 'n Jam '96** | PlayStation | [PCSX ReARMed](https://github.com/libretro/pcsx_rearmed) | 4 | `slamjam96.chd` | 0.1.1 |
-| **Tony Hawk's Pro Skater 2** | Dreamcast | [Flycast](https://github.com/libretro/flycast) | 2 | `thps2.chd` | 0.1.9 |
+| **Super Street Fighter II Turbo** | Capcom CPS2 arcade, Euro 940223 | [MAME 2003-Plus](https://github.com/libretro/mame2003-plus-libretro) | 2 | `ssf2t.zip` | 0.2.0 |
+| **Ultimate Mortal Kombat 3** | Midway Wolf-unit arcade, rev 1.2 | [MAME 2003-Plus](https://github.com/libretro/mame2003-plus-libretro) | 2 | `umk3.zip` | 0.2.0 |
+| **Slam 'n Jam '96** | PlayStation | [PCSX ReARMed](https://github.com/libretro/pcsx_rearmed) | 4 | `slamjam96.chd` | 0.2.0 |
+| **Tony Hawk's Pro Skater 2** | Dreamcast | [Flycast](https://github.com/libretro/flycast) | 2 | `thps2.chd` | 0.2.0 |
 
 An **NBA Showtime: NBA on NBC** frontend is also in the source, but its engine is not finished and it has no build yet.
 
@@ -28,6 +28,7 @@ YouTube: https://www.youtube.com/@develop_erZ
 - The original games, with their own graphics and sound, running through a libretro core built into each app. Nothing is downloaded at runtime.
 - On-screen touch controls with a floating stick, haptics and a customizable layout. Each port has its own six action buttons, labelled for its game (punches and kicks, ollie, flip, grind and grab, and so on).
 - Controller support: Xbox, PlayStation, MFi and Switch Pro on iOS, and XInput and SDL gamepads on Windows, with remappable buttons. Two players for SSF2T, UMK3 and THPS2, four for Slam 'n Jam '96.
+- **True widescreen** in all four games, on by default: more of the stage or court is shown during play, with nothing stretched. See [Widescreen](#widescreen).
 - **NewPixie CRT filter**, on by default, with sharp or smooth pixels and ARCADE, SQUARE or FULL screen modes. COLOR SIDES fills the unused side areas with color instead of black.
 - The arcade ROM sets are checked by checksum when they're imported, whatever the files are called. Missing or wrong files are listed.
 - High scores, saves and settings are kept automatically. The game pauses when you switch apps or lock the phone.
@@ -50,7 +51,7 @@ YouTube: https://www.youtube.com/@develop_erZ
 
 ### iPhone and iPad
 
-1. Download the IPA for your game (for example `SSF2T-0.1.1-unsigned.ipa`) from the [latest release](https://github.com/DevZer0D4Y/NativePorts/releases), or [build it from source](#building).
+1. Download the IPA for your game (for example `SSF2T-0.2.0-unsigned.ipa`) from the [latest release](https://github.com/DevZer0D4Y/NativePorts/releases), or [build it from source](#building).
 2. Sign and install it with your sideloading tool. With ESign, import the IPA, then sign and install it inside ESign.
 3. Open the app, tap **IMPORT** (for example **IMPORT ssf2t.zip**) and pick your game file in the Files app. You can also copy it, under the name from the table above, into **Files → On My iPhone → *the app's folder***, then quit and reopen the app.
 
@@ -66,7 +67,7 @@ If Windows shows "Windows protected your PC", click **More info › Run anyway**
 
 ## Playing and settings
 
-On iOS, tap **❚❚** to pause, or hold the controller's Menu button. The pause menu has the same tabs as NBA Hangtime: **GAME**, **DISPLAY** (CRT filter, COLOR SIDES, screen mode, pixels), **TOUCH** (layout, size, opacity, vibration, **CUSTOMIZE LAYOUT**) and **GAMEPAD** (remap every action).
+On iOS, tap **❚❚** to pause, or hold the controller's Menu button. The pause menu has the same tabs as NBA Hangtime: **GAME**, **DISPLAY** (WIDESCREEN, CRT filter, COLOR SIDES, screen mode, pixels), **TOUCH** (layout, size, opacity, vibration, **CUSTOMIZE LAYOUT**) and **GAMEPAD** (remap every action).
 
 On Windows, the default keys are the arrow keys, **X C Z A S D** for the six actions, **5** for coin or select and **1** for start. Every key can be remapped in **CONTROLS**.
 
@@ -74,25 +75,39 @@ On Windows, the default keys are the arrow keys, **X C Z A S D** for the six act
 |---|---|
 | **Esc** or **P** | Pause menu |
 | **F1** | Controls |
+| **F8** | Widescreen |
 | **F9** | COLOR SIDES |
 | **F10** | Screen mode |
 | **F11** or **Alt+Enter** | Fullscreen |
 | **O** | Open a game file |
 
+## Widescreen
+
+WIDESCREEN (iOS: **DISPLAY** tab; Windows: pause menu or **F8**) is on by default. Like NBA Hangtime's, it shows more of the game rather than stretching it. Each game needed its own approach:
+
+| Game | How it works |
+|---|---|
+| Super Street Fighter II Turbo | During fights the whole 512-pixel row the CPS2 hardware draws is shown, about 16:9, instead of the 384 pixels in the middle. The stages are already there in the tilemaps. Where a stage ends, the edge stays dark instead of showing unused tiles. |
+| Ultimate Mortal Kombat 3 | During fights the 112 hidden columns of the arcade's 512-pixel rows are shown. The game's display window is widened so the scenery just off screen is drawn, and the floor and repeating backgrounds are extended to the new edges. |
+| Slam 'n Jam '96 | 3D scenes are drawn 3/4 as wide and shown at 16:9, so the court, the crowd and the players keep their proportions and the sides show the rest of the arena. Movies and picture screens stay 4:3. |
+| Tony Hawk's Pro Skater 2 | Flycast's widescreen patch for the game, shown at 16:9. |
+
+In SSF2T and UMK3 the fighters stay within the original screen edges, so the fights play exactly as before, and the HUD stays where it was. Menus keep their 4:3 picture, with COLOR SIDES filling the sides. Turn WIDESCREEN off for the original picture.
+
 ## Status
 
 | Game | Version | Platforms |
 |---|---|---|
-| Super Street Fighter II Turbo | 0.1.1 | iOS, Windows |
-| Ultimate Mortal Kombat 3 | 0.1.1 | iOS, Windows |
-| Slam 'n Jam '96 | 0.1.1 | iOS, Windows |
-| Tony Hawk's Pro Skater 2 | 0.1.9 | iOS, Windows |
+| Super Street Fighter II Turbo | 0.2.0 | iOS, Windows |
+| Ultimate Mortal Kombat 3 | 0.2.0 | iOS, Windows |
+| Slam 'n Jam '96 | 0.2.0 | iOS, Windows |
+| Tony Hawk's Pro Skater 2 | 0.2.0 | iOS, Windows |
 | NBA Showtime | — | Frontend only, engine not finished |
 
 Known limitations:
 
 - THPS2 on iOS runs the Dreamcast CPU through an interpreter, since iOS doesn't allow a JIT, so it may not reach full speed on every device. Windows uses the x86-64 JIT.
-- A true widescreen mode like NBA Hangtime's, which shows more of the game instead of stretching it, isn't available yet. Each game needs its own patches. Until then, COLOR SIDES and the FULL screen mode are the options.
+- Slam 'n Jam '96: in some camera angles a corner of the widescreen picture stays dark, where the game itself draws nothing.
 
 ## Building
 
@@ -106,9 +121,9 @@ python3 scripts/fetch_cores.py
 
 | Core | Upstream commit | Patch |
 |---|---|---|
-| MAME 2003-Plus | [`e05caba`](https://github.com/libretro/mame2003-plus-libretro/tree/e05caba0aa33cae580d104c45c6caa6406617e3b) | [`mame2003-plus.patch`](patches/mame2003-plus.patch): SSF2T and UMK3 split-core drivers, static linking on Apple platforms, NVRAM saving |
+| MAME 2003-Plus | [`e05caba`](https://github.com/libretro/mame2003-plus-libretro/tree/e05caba0aa33cae580d104c45c6caa6406617e3b) | [`mame2003-plus.patch`](patches/mame2003-plus.patch): SSF2T and UMK3 split-core drivers, static linking on Apple platforms, NVRAM saving, SSF2T and UMK3 widescreen, the UMK3 palette fix |
 | Flycast (libretro) | [`497de25`](https://github.com/libretro/flycast/tree/497de2593bc8bef1a31a3105a0a57f6a059b6ca7) | [`flycast.patch`](patches/flycast.patch): iOS build without JIT or memory-fault handling, texture cache, GLES and timing fixes |
-| PCSX ReARMed | [`c881679`](https://github.com/libretro/pcsx_rearmed/tree/c8816799b50388e61cfe237fe2cdbb7d8175f20a) | none |
+| PCSX ReARMed | [`c881679`](https://github.com/libretro/pcsx_rearmed/tree/c8816799b50388e61cfe237fe2cdbb7d8175f20a) | [`pcsx.patch`](patches/pcsx.patch): widescreen in the GPU renderer |
 
 Builds use two parallel jobs. Each game is built by its short name: `ssf2t`, `umk3`, `slamjam96` or `thps2`.
 
@@ -116,7 +131,7 @@ Builds use two parallel jobs. Each game is built by its short name: `ssf2t`, `um
 
 ```sh
 python3 scripts/build_ios.py ssf2t     # builds the core, then the app, unsigned
-python3 scripts/package_ipas.py ssf2t  # writes dist/ios/SSF2T-0.1.1-unsigned.ipa
+python3 scripts/package_ipas.py ssf2t  # writes dist/ios/SSF2T-0.2.0-unsigned.ipa
 ```
 
 Leave out the game name in `package_ipas.py` to package all four. Packaging strips the signature and refuses to include game files, signing files or private build paths. To sign during the build instead, pass `--team YOURTEAMID` to `build_ios.py`, or open `ports/<game>/ios/Hangtime.xcodeproj` in Xcode and choose your team in Signing & Capabilities (build the core first with `python3 scripts/build_core.py <game> iphoneos`).

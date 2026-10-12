@@ -34,7 +34,7 @@
       "Windows"
     ],
     "stretch_satisfies_requirement": false,
-    "status": "game_specific_patch_pending",
+    "status": "implemented",
     "completion_requires": [
       "Verify extra scenery during gameplay without stretching or cropping",
       "Verify camera and object visibility at both edges",
@@ -42,6 +42,7 @@
       "Verify game menus have colored side areas",
       "Verify live toggle and original view restoration",
       "Verify with supported game image on iOS and Windows"
-    ]
+    ],
+    "implementation": "Full 512-pixel rows during fights: the mkdisp screen window is widened, floor lines and repeating tile rows are extended, static bands are mirrored at the old edges. Fighters stay within the original screen bounds; menus 4:3."
   }
 }

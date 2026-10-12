@@ -69,6 +69,39 @@
  
  #endif	/* DRIVER_RECURSIVE */
 +
+--- a/src/drivers/cps2.c
++++ b/src/drivers/cps2.c
+@@ -120,6 +120,7 @@
+ 
+ extern data16_t *cps2_objram1,*cps2_objram2;
+ extern data16_t *cps2_output;
++data16_t *cps2_workram;
+ extern size_t cps2_output_size;
+ extern VIDEO_START( cps2 );
+ 
+@@ -355,7 +356,7 @@
+ 	{ 0x8040e0, 0x8040e1, cps2_objram_bank_w },		/* bit 0 = Object ram bank swap */
+ 	{ 0x804100, 0x8041ff, cps1_output_w, &cps1_output, &cps1_output_size },  /* Output ports */
+ 	{ 0x900000, 0x92ffff, cps1_gfxram_w, &cps1_gfxram, &cps1_gfxram_size },
+-	{ 0xff0000, 0xffffff, MWA16_RAM },				/* RAM */
++	{ 0xff0000, 0xffffff, MWA16_RAM, &cps2_workram },	/* RAM */
+ MEMORY_END
+ 
+ INPUT_PORTS_START( cps2_4p4b )
+--- a/src/drivers/midwunit.c
++++ b/src/drivers/midwunit.c
+@@ -610,7 +610,11 @@
+ 
+ 	/* video hardware */
+ 	MDRV_VIDEO_ATTRIBUTES(VIDEO_TYPE_RASTER)
++#ifdef drv_umk3
++	MDRV_SCREEN_SIZE(512, 256)		/* room for the full bitmap row in widescreen */
++#else
+ 	MDRV_SCREEN_SIZE(400, 256)
++#endif
+ 	MDRV_VISIBLE_AREA(0, 399, 0, 253)
+ 	MDRV_PALETTE_LENGTH(32768+2)
+ 
 --- a/src/lib/zlib/zutil.h
 +++ b/src/lib/zlib/zutil.h
 @@ -118,7 +118,7 @@
@@ -80,6 +113,33 @@
  #  define OS_CODE  0x07
  #  ifndef Z_SOLO
  #    if defined(__MWERKS__) && __dest_os != __be_os && __dest_os != __win32_os
+--- a/src/machine/midwunit_machine.c
++++ b/src/machine/midwunit_machine.c
+@@ -471,21 +471,21 @@
+ {
+ 	init_mk3_common();
+ 	INSTALL_SPEEDUP_3(0x106a0e0, 0xff9696a0, 0x105dc10, 0x105dc30, 0x105dc50);
+-	umk3_palette = install_mem_write16_handler(0, 0x0106a060, 0x0106a09f, umk3_palette_hack_w);
++	umk3_palette = install_mem_write16_handler(0, TOBYTE(0x0106a060), TOBYTE(0x0106a09f), umk3_palette_hack_w);
+ }
+ 
+ DRIVER_INIT( umk3r11 )
+ {
+ 	init_mk3_common();
+ 	INSTALL_SPEEDUP_3(0x106a0e0, 0xff969680, 0x105dc10, 0x105dc30, 0x105dc50);
+-	umk3_palette = install_mem_write16_handler(0, 0x0106a060, 0x0106a09f, umk3_palette_hack_w);
++	umk3_palette = install_mem_write16_handler(0, TOBYTE(0x0106a060), TOBYTE(0x0106a09f), umk3_palette_hack_w);
+ }
+ 
+ DRIVER_INIT( umk3p )
+ {
+ 	init_mk3_common();
+ 	INSTALL_SPEEDUP_3(0x106a0e0, 0xff9696a0, 0x105dc10, 0x105dc30, 0x105dc50);
+-	umk3_palette = install_mem_write16_handler(0, 0x0106a060, 0x0106a09f, umk3_palette_hack_w);
++	umk3_palette = install_mem_write16_handler(0, TOBYTE(0x0106a060), TOBYTE(0x0106a09f), umk3_palette_hack_w);
+ }
+ 
+ /********************** 2 On 2 Open Ice Challenge **********************/
 --- a/src/mame2003/mame2003.c
 +++ b/src/mame2003/mame2003.c
 @@ -418,6 +418,13 @@
@@ -96,3 +156,414 @@
  void retro_unload_game(void)
  {
      mame_done();
+--- a/src/mame2003/video.c
++++ b/src/mame2003/video.c
+@@ -243,7 +243,11 @@
+    /* Allocate an output video buffer, if necessary */
+    if (!video_do_bypass)
+    {
+-      video_buffer = malloc(video_config.width * video_config.height * video_stride_out);
++      /* room for the whole screen bitmap: drivers may widen the visible area later */
++      unsigned buffer_w = video_config.width, buffer_h = video_config.height;
++      if (Machine->drv->screen_width > buffer_w) buffer_w = Machine->drv->screen_width;
++      if (Machine->drv->screen_height > buffer_h) buffer_h = Machine->drv->screen_height;
++      video_buffer = malloc(buffer_w * buffer_h * video_stride_out);
+       if (!video_buffer)
+          return 1;
+    }
+--- a/src/vidhrdw/cps1_vidhrdw.c
++++ b/src/vidhrdw/cps1_vidhrdw.c
+@@ -1839,11 +1839,112 @@
+ 	Refresh screen
+ 
+ ***************************************************************************/
++
++#ifdef drv_ssf2t
++/*************************************
++ *
++ *	Super Street Fighter II Turbo widescreen
++ *
++ *************************************/
++
++/* The CPS2 video hardware draws 512-pixel rows and the game shows the 384 in the
++   middle. During a fight the whole row is shown: the stage tilemaps hold the
++   scenery around the 4:3 view and the fighters stay inside it. The camera centre
++   moves between the stage limits, so the scenery of the main layer (scroll 2)
++   ends 192 pixels beyond them; a parallax layer (scroll 3) scrolls in proportion
++   to the camera and covers less. Each layer is clipped to the columns its art
++   covers, so the tilemap's unused tiles never show. Menus stay 4:3. */
++extern data16_t *cps2_workram;
++#define SF_RAM(a)		cps2_workram[((a) - 0xff0000) >> 1]
++#define SF_P1			0xff844e		/* player objects, non-zero during a fight */
++#define SF_P2			0xff884e
++#define SF_CENTRE		0xff8ed4		/* camera centre X */
++#define SF_MIN			0xff8c54		/* camera centre limits */
++#define SF_MAX			0xff8c56
+ 
++#define SF_BACK			0xff803a		/* X of the parallax layer (scroll 3) */
++
++static int ssf2t_requested = 1, ssf2t_wide;
++static int ssf2t_backc, ssf2t_learned, ssf2t_knum, ssf2t_kden;
++
++void ssf2t_set_widescreen(int enable)
++{
++	ssf2t_requested = enable != 0;
++}
++
++static void ssf2t_update_widescreen(void)
++{
++	INT16 centre, lo, hi;
++	int fighting, wide;
++	if (!cps2_workram)
++		return;
++	centre = SF_RAM(SF_CENTRE); lo = SF_RAM(SF_MIN); hi = SF_RAM(SF_MAX);
++	fighting = SF_RAM(SF_P1) && SF_RAM(SF_P2) && hi > lo && centre >= lo && centre <= hi;
++	wide = ssf2t_requested && fighting;
++	if (!fighting)
++		ssf2t_learned = 0;
++	else if (centre == (lo + hi) / 2)
++	{
++		/* every round starts with the camera centred: note where the parallax layer is */
++		ssf2t_backc = (INT16)SF_RAM(SF_BACK);
++		ssf2t_learned = 1;
++		ssf2t_kden = 0;
++	}
++	else if (ssf2t_learned && abs(centre - (lo + hi) / 2) >= 24)
++	{
++		/* ...and how fast it follows the camera */
++		ssf2t_knum = (INT16)SF_RAM(SF_BACK) - ssf2t_backc;
++		ssf2t_kden = centre - (lo + hi) / 2;
++	}
++	if (wide != ssf2t_wide)
++		set_visible_area(wide ? 0 : 64, wide ? 511 : 447, Machine->visible_area.min_y, Machine->visible_area.max_y);
++	ssf2t_wide = wide;
++}
++
++/* Columns of the bitmap that a layer's art covers in widescreen: the 4:3 view
++   (columns 64-447) reaches the end of a layer's art when the camera reaches a limit. */
++static void ssf2t_layer_clip(int layer, const struct rectangle *cliprect, struct rectangle *clip)
++{
++	INT16 centre = SF_RAM(SF_CENTRE), lo = SF_RAM(SF_MIN), hi = SF_RAM(SF_MAX);
++	int mid = (lo + hi) / 2, left, right;
++	*clip = *cliprect;
++	if (!ssf2t_wide)
++		return;
++	if (layer == 2)
++	{
++		left = 64 + lo - centre;
++		right = 448 + hi - centre;
++	}
++	else if (layer == 3 && ssf2t_learned && ssf2t_kden)
++	{
++		int back = (INT16)SF_RAM(SF_BACK);
++		left = 64 + ssf2t_backc + (lo - mid) * ssf2t_knum / ssf2t_kden - back;
++		right = 448 + ssf2t_backc + (hi - mid) * ssf2t_knum / ssf2t_kden - back;
++		if (left > right) { int swap = left - 64 + 448; left = right - 448 + 64; right = swap; }
++	}
++	else
++		return;
++	if (left > clip->min_x) clip->min_x = left;
++	if (right - 1 < clip->max_x) clip->max_x = right - 1;
++	if (clip->max_x < clip->min_x) clip->max_x = clip->min_x - 1;
++}
++
++static void ssf2t_render_layer(struct mame_bitmap *bitmap, const struct rectangle *cliprect, int layer, int primask)
++{
++	struct rectangle clip;
++	ssf2t_layer_clip(layer, cliprect, &clip);
++	if (clip.max_x >= clip.min_x)
++		cps1_render_layer(bitmap, &clip, layer, primask);
++}
++#endif
++
+ VIDEO_UPDATE( cps1 )
+ {
+     int layercontrol,l0,l1,l2,l3;
+ 	int videocontrol=cps1_port(0x22);
++#ifdef drv_ssf2t
++	struct rectangle wide_rect;
++#endif
+ 
+ 
+ 	flip_screen_set(videocontrol & 0x8000);
+@@ -1889,6 +1990,14 @@
+ 	tilemap_set_scrolly(tilemap[2],0,scroll3y);
+ 
+ 
++#ifdef drv_ssf2t
++	ssf2t_update_widescreen();
++	wide_rect = *cliprect;
++	wide_rect.min_x = Machine->visible_area.min_x;
++	wide_rect.max_x = Machine->visible_area.max_x;
++	cliprect = &wide_rect;
++#endif
++
+ 	/* Blank screen */
+ 	fillbitmap(bitmap,Machine->pens[4095],cliprect);
+ 
+@@ -1960,9 +2069,15 @@
+ 			}
+ 		}
+ 
++#ifdef drv_ssf2t
++		ssf2t_render_layer(bitmap,cliprect,l0,1);
++		ssf2t_render_layer(bitmap,cliprect,l1,2);
++		ssf2t_render_layer(bitmap,cliprect,l2,4);
++#else
+ 		cps1_render_layer(bitmap,cliprect,l0,1);
+ 		cps1_render_layer(bitmap,cliprect,l1,2);
+ 		cps1_render_layer(bitmap,cliprect,l2,4);
++#endif
+ 		cps2_render_sprites(bitmap,cliprect,primasks);
+ 	}
+ 
+--- a/src/vidhrdw/midtunit_vidhrdw.c
++++ b/src/vidhrdw/midtunit_vidhrdw.c
+@@ -689,6 +689,173 @@
+ 
+ /* workaround so comic book offer in mk is correct, without breaking text in mk2 */
+ static int mk_delay = 0;
++
++#ifdef drv_umk3
++/*************************************
++ *
++ *	Ultimate Mortal Kombat 3 widescreen
++ *
++ *************************************/
++
++/* UMK3 draws into 512-pixel bitmap rows but shows only the 400 columns after a
++   56-pixel pad. Its display processor (the MK "mkdisp" object handler) culls every
++   background plane against the screen window [scrntl, scrnlr]; widening that
++   window during a fight draws the scenery that lies just off screen, and the
++   whole row is shown. The per-line floor copies come from a wider image and are
++   widened too, and rows of identical repeating tiles are continued into the new
++   columns. Fighters stay bounded by the original screen edges. Menus stay 4:3. */
++#define U3_PAD			56
++#define U3_RAM(a)		midyunit_scratch_ram[((a) - 0x01000000) >> 4]
++#define U3_ROM(a)		midyunit_code_rom[((a) - 0xff800000) >> 4]
++#define U3_SCRNTL_X		0x010608e0		/* X word of the [Y,X] window top left */
++#define U3_SCRNLR_X		0x01060900		/* X word of the window lower right */
++#define U3_P1_OBJ		0x010609d0
++#define U3_P2_OBJ		0x01061580
++
++static int umk3_requested = 1, umk3_wide, umk3_checked, umk3_supported;
++
++void umk3_set_widescreen(int enable)
++{
++	umk3_requested = enable != 0;
++}
++
++int umk3_widescreen_active(void)
++{
++	return umk3_wide;
++}
++
++/* Only the rev 1.2 program: "move @scrntl,a14,L" and "move @scrnlr,a13,L" in the display loop. */
++static int umk3_program_matches(void)
++{
++	return U3_ROM(0xff804f50) == 0x07ae && U3_ROM(0xff804f60) == 0x08e0 && U3_ROM(0xff804f70) == 0x0106 &&
++	       U3_ROM(0xff805020) == 0x07ad && U3_ROM(0xff805030) == 0x0900 && U3_ROM(0xff805040) == 0x0106;
++}
++
++static void umk3_update_widescreen(void)
++{
++	int fighting, wide;
++	if (!umk3_checked)
++	{
++		umk3_supported = umk3_program_matches();
++		umk3_checked = 1;
++	}
++	fighting = (U3_RAM(U3_P1_OBJ) | U3_RAM(U3_P1_OBJ + 0x10)) && (U3_RAM(U3_P2_OBJ) | U3_RAM(U3_P2_OBJ + 0x10));
++	wide = umk3_supported && umk3_requested && fighting;
++
++	/* screens set the default full-screen window once; convert only that window */
++	if (wide && (INT16)U3_RAM(U3_SCRNTL_X) == 0 && U3_RAM(U3_SCRNLR_X) == 400)
++	{
++		U3_RAM(U3_SCRNTL_X) = (UINT16)-U3_PAD;
++		U3_RAM(U3_SCRNLR_X) = 400 + U3_PAD;
++	}
++	else if (!wide && (INT16)U3_RAM(U3_SCRNTL_X) == -U3_PAD && U3_RAM(U3_SCRNLR_X) == 400 + U3_PAD)
++	{
++		U3_RAM(U3_SCRNTL_X) = 0;
++		U3_RAM(U3_SCRNLR_X) = 400;
++	}
++	if (wide != umk3_wide)
++		set_visible_area(0, wide ? 511 : 399, Machine->visible_area.min_y, Machine->visible_area.max_y);
++	umk3_wide = wide;
++}
++
++/* Blits of this frame, to recognise rows of identical tiles. */
++#define U3_TILES 96
++static struct { UINT32 offset; UINT16 command, palette, width, height, ypos, xpos, extended; } umk3_tiles[U3_TILES];
++static int umk3_tile_count;
++#endif
++
++static void dma_draw_current(int command)
++{
++	if (dma_state.xstep == 0x100 && dma_state.ystep == 0x100)
++	{
++		if (command & 0x80)
++			(*dma_draw_skip_noscale[command & 0x1f])();
++		else
++			(*dma_draw_noskip_noscale[command & 0x1f])();
++	}
++	else
++	{
++		if (command & 0x80)
++			(*dma_draw_skip_scale[command & 0x1f])();
++		else
++			(*dma_draw_noskip_scale[command & 0x1f])();
++	}
++}
++
++#ifdef drv_umk3
++/* A tile drawn next to an identical copy of itself (same image, size, row and
++   palette) belongs to a repeating row; continue the row into the new columns. */
++static void umk3_extend_tiles(int command)
++{
++	int i, x = dma_state.xpos, w = dma_state.width;
++	if (dma_state.xstep != 0x100 || dma_state.ystep != 0x100 || dma_state.height < 2 || w < 16 || x >= 512)
++		return;
++	for (i = 0; i < umk3_tile_count; i++)
++	{
++		int ox = umk3_tiles[i].xpos, left, right, p, saved = dma_state.xpos;
++		if (umk3_tiles[i].offset != dma_state.offset || umk3_tiles[i].command != command ||
++			umk3_tiles[i].width != w || umk3_tiles[i].height != dma_state.height ||
++			umk3_tiles[i].ypos != dma_state.ypos || umk3_tiles[i].palette != dma_state.palette ||
++			(ox != x - w && ox != x + w) || umk3_tiles[i].extended)
++			continue;
++		umk3_tiles[i].extended = 1;
++		left = ox < x ? ox : x;
++		right = (ox > x ? ox : x) + w;
++		/* only rows that reach an original screen edge and stop short of the new one */
++		if (left > 0 && left <= U3_PAD + 8)
++			for (p = left - w; p + w > 0; p -= w)
++			{
++				dma_state.xpos = p & XPOSMASK;
++				dma_draw_current(command);
++			}
++		if (right < 512 && right >= 400 + U3_PAD - 8)
++			for (p = right; p < 512; p += w)
++			{
++				dma_state.xpos = p;
++				dma_draw_current(command);
++			}
++		dma_state.xpos = saved;
++		break;
++	}
++	/* a wide static band (sky, clouds) that ends at an original screen edge is
++	   continued with its mirror image, which keeps it seamless */
++	if (i == umk3_tile_count && w >= 200 && dma_state.height >= 8)
++	{
++		int saved = dma_state.xpos, pre = 0, post = 0;
++		if (command & 0x80)
++		{
++			/* mirror around the visible edges: compressed rows start with their skip counts */
++			UINT32 o = dma_state.offset;
++			int value = ((midyunit_gfx_rom[o >> 3] | (midyunit_gfx_rom[(o >> 3) + 1] << 8)) >> (o & 7)) & 0xff;
++			pre = (value & 0x0f) << dma_state.preskip;
++			post = ((value >> 4) & 0x0f) << dma_state.postskip;
++		}
++		if (x + pre >= U3_PAD - 8 && x + pre <= U3_PAD + 8)
++		{
++			dma_state.xpos = (x + 2 * pre - 1) & XPOSMASK;
++			dma_draw_current(command ^ 0x10);
++		}
++		if (x + w - post >= 400 + U3_PAD - 8 && x + w - post <= 400 + U3_PAD + 8)
++		{
++			dma_state.xpos = (x + 2 * (w - post) - 1) & XPOSMASK;
++			dma_draw_current(command ^ 0x10);
++		}
++		dma_state.xpos = saved;
++	}
++	if (umk3_tile_count < U3_TILES)
++	{
++		umk3_tiles[umk3_tile_count].offset = dma_state.offset;
++		umk3_tiles[umk3_tile_count].command = command;
++		umk3_tiles[umk3_tile_count].palette = dma_state.palette;
++		umk3_tiles[umk3_tile_count].width = w;
++		umk3_tiles[umk3_tile_count].height = dma_state.height;
++		umk3_tiles[umk3_tile_count].ypos = dma_state.ypos;
++		umk3_tiles[umk3_tile_count].xpos = x;
++		umk3_tiles[umk3_tile_count].extended = 0;
++		umk3_tile_count++;
++	}
++}
++#endif
+ 
+ WRITE16_HANDLER( midtunit_dma_w )
+ {
+@@ -786,6 +953,17 @@
+ 		goto skipdma;
+ 	}
+ 
++#ifdef drv_umk3
++	/* the floor is drawn as 400-pixel lines cut from a wider image: draw the whole row */
++	if (umk3_wide && dma_state.height == 1 && dma_state.width == 400 && dma_state.xpos == U3_PAD &&
++		dma_state.xstep == 0x100 && !(command & 0x80) && dma_state.offset >= (UINT32)(U3_PAD * dma_state.bpp))
++	{
++		dma_state.xpos = 0;
++		dma_state.width = 512;
++		dma_state.offset -= U3_PAD * dma_state.bpp;
++	}
++#endif
++
+ 	/* there seems to be two types of behavior for the DMA chip */
+ 	/* for MK1 and MK2, the upper byte of the LRSKIP is the     */
+ 	/* starting skip value, and the lower byte is the ending    */
+@@ -803,22 +981,15 @@
+ 	}
+ 
+ 	/* then draw */
++	dma_draw_current(command);
++#ifdef drv_umk3
++	if (umk3_wide)
++		umk3_extend_tiles(command);
++#endif
+ 	if (dma_state.xstep == 0x100 && dma_state.ystep == 0x100)
+-	{
+-		if (command & 0x80)
+-			(*dma_draw_skip_noscale[command & 0x1f])();
+-		else
+-			(*dma_draw_noskip_noscale[command & 0x1f])();
+-
+ 		pixels = dma_state.width * dma_state.height;
+-	}
+ 	else
+ 	{
+-		if (command & 0x80)
+-			(*dma_draw_skip_scale[command & 0x1f])();
+-		else
+-			(*dma_draw_noskip_scale[command & 0x1f])();
+-
+ 		if (dma_state.xstep && dma_state.ystep)
+ 			pixels = ((dma_state.width << 8) / dma_state.xstep) * ((dma_state.height << 8) / dma_state.ystep);
+ 		else
+@@ -884,9 +1055,18 @@
+ 	/* determine how many pixels to copy */
+ 	xoffs = cliprect->min_x;
+ 	width = cliprect->max_x - xoffs + 1;
++#ifdef drv_umk3
++	/* switch before drawing so the frame matches its width */
++	umk3_update_widescreen();
++	width = Machine->visible_area.max_x - xoffs + 1;
++#endif
+ 
+ 	/* adjust the offset */
+ 	offset += xoffs;
++#ifdef drv_umk3
++	if (Machine->visible_area.max_x >= 400)
++		offset -= U3_PAD;
++#endif
+ 	offset += 512 * cliprect->min_y;
+ 	offset &= 0x3ffff;
+ 
+@@ -902,4 +1082,8 @@
+ 
+       offset = (offset + 512) & 0x3ffff;
+    }
++
++#ifdef drv_umk3
++	umk3_tile_count = 0;
++#endif
+ }
