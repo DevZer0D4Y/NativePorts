@@ -445,7 +445,7 @@ static void draw(void) {
     int width,height; SDL_GetRendererOutputSize(renderer,&width,&height);
     SDL_RenderSetLogicalSize(renderer,0,0);
     SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
-    if (running) SDL_SetRenderDrawColor(renderer,colorSides?12:0,colorSides?22:0,colorSides?43:0,255); else SDL_SetRenderDrawColor(renderer,9,12,19,255);
+    if (running) SDL_SetRenderDrawColor(renderer,0,0,0,255); else SDL_SetRenderDrawColor(renderer,9,12,19,255);
     SDL_RenderClear(renderer);
     if (running && ht_width() && ht_height()) {
         int w=(int)ht_width(), h=(int)ht_height(), tw=0,th=0;
@@ -454,6 +454,11 @@ static void draw(void) {
         if (texture) {
             SDL_UpdateTexture(texture,NULL,ht_pixels(),w*4);
             SDL_Rect rect=game_rect(width,height);
+            /* COLOR SIDES fills vertical margins only; letterbox bars stay black. */
+            if (colorSides && rect.x > 0) {
+                fill(0,rect.y,rect.x,rect.h,12,22,43,255);
+                fill(rect.x+rect.w,rect.y,width-rect.x-rect.w,rect.h,12,22,43,255);
+            }
             if (!crtMode || !crt_draw(renderer,texture,ht_pixels(),w,h,rect,true)) SDL_RenderCopy(renderer,texture,NULL,&rect);
         }
         if (menu!=MENU_NONE) fill(0,0,width,height,0,0,0,190);

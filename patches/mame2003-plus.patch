@@ -1,10 +1,9 @@
 --- a/Makefile.split
 +++ b/Makefile.split
-@@ -107,6 +107,22 @@
- SOUNDS+=DISCRETE@
+@@ -108,6 +108,22 @@
  SOUNDS+=YM2610@
  SOUNDS+=AY8910@
-+
+ 
 +# Dedicated CPS2 native port, plus shared bootstrap dependencies.
 +ifneq (,$(filter $(INCLUDE_DRV),drv_ssf2t))
 + CPUS += M68000@ Z80@
@@ -20,9 +19,10 @@
 + SOUNDS+=YM2151_ALT@ HC55516@ OKIM6295@
 + SOURCES_C += $(CORE_DIR)/drivers/midwunit.c $(CORE_DIR)/machine/midwunit_machine.c $(CORE_DIR)/machine/midwayic.c $(CORE_DIR)/machine/midyunit_machine.c $(CORE_DIR)/vidhrdw/midyunit_vidhrdw.c $(CORE_DIR)/sndhrdw/williams_sndhrdw.c $(CORE_DIR)/sndhrdw/cage_sndhrdw.c $(CORE_DIR)/vidhrdw/midtunit_vidhrdw.c $(CORE_DIR)/sndhrdw/dcs.c $(CORE_DIR)/machine/pd4990a.c $(CORE_DIR)/machine/neocrypt.c $(CORE_DIR)/drivers/neogeo.c $(CORE_DIR)/vidhrdw/neogeo_vidhrdw.c
 +endif
- 
++
  # drivers
  ifneq (,$(filter $(INCLUDE_DRV),drv_1942 core_none))
+ 	CPUS+=Z80@
 @@ -2656,8 +2672,6 @@
  	$(CORE_DIR)/libretro-deps/libFLAC/stream_decoder.c \
  	$(CORE_DIR)/libretro-deps/libFLAC/window.c
@@ -32,16 +32,15 @@
  SOURCES_C += \
  	$(LIBRETRO_COMM_DIR)/compat/compat_posix_string.c \
  	$(LIBRETRO_COMM_DIR)/compat/compat_snprintf.c \
-@@ -2692,8 +2706,8 @@
+@@ -2692,7 +2706,7 @@
  	$(CORE_DIR)/lib/zlib/uncompr.c \
  	$(CORE_DIR)/lib/zlib/unzip.c \
  	$(CORE_DIR)/lib/zlib/zutil.c
 -endif
- 
 +
+ 
  ifeq ($(ZLIB_UNCOMPRESS), 1)
  SOURCES_C += \
- 	     $(CORE_DIR)/lib/zlib/uncompr.c
 @@ -2710,3 +2724,5 @@
  	SOURCES_ASM += $(CORE_DIR)/cpu/z80_drz80/drz80.s
  	SOURCES_C += $(CORE_DIR)/cpu/z80_drz80/drz80_z80.c
@@ -173,11 +172,10 @@
     }
 --- a/src/vidhrdw/cps1_vidhrdw.c
 +++ b/src/vidhrdw/cps1_vidhrdw.c
-@@ -1839,11 +1839,112 @@
- 	Refresh screen
+@@ -1840,10 +1840,130 @@
  
  ***************************************************************************/
-+
+ 
 +#ifdef drv_ssf2t
 +/*************************************
 + *
@@ -199,7 +197,7 @@
 +#define SF_CENTRE		0xff8ed4		/* camera centre X */
 +#define SF_MIN			0xff8c54		/* camera centre limits */
 +#define SF_MAX			0xff8c56
- 
++
 +#define SF_BACK			0xff803a		/* X of the parallax layer (scroll 3) */
 +
 +static int ssf2t_requested = 1, ssf2t_wide;
@@ -271,8 +269,27 @@
 +{
 +	struct rectangle clip;
 +	ssf2t_layer_clip(layer, cliprect, &clip);
-+	if (clip.max_x >= clip.min_x)
-+		cps1_render_layer(bitmap, &clip, layer, primask);
++    if (clip.max_x >= clip.min_x) {
++        int x, y;
++        cps1_render_layer(bitmap, &clip, layer, primask);
++        /* Finite stage art cannot supply new columns at the camera limit.
++         * Reflect its painted edge per layer, before fighters and the HUD,
++         * including priority so sprites still pass behind foreground art. */
++        for (y = clip.min_y; y <= clip.max_y; ++y) {
++            for (x = cliprect->min_x; x < clip.min_x; ++x) {
++                int src = clip.min_x + clip.min_x - x - 1;
++                if (src > clip.max_x) src = clip.max_x;
++                plot_pixel(bitmap,x,y,read_pixel(bitmap,src,y));
++                plot_pixel(priority_bitmap,x,y,read_pixel(priority_bitmap,src,y));
++            }
++            for (x = clip.max_x + 1; x <= cliprect->max_x; ++x) {
++                int src = clip.max_x - (x - clip.max_x - 1);
++                if (src < clip.min_x) src = clip.min_x;
++                plot_pixel(bitmap,x,y,read_pixel(bitmap,src,y));
++                plot_pixel(priority_bitmap,x,y,read_pixel(priority_bitmap,src,y));
++            }
++        }
++    }
 +}
 +#endif
 +
@@ -286,10 +303,11 @@
  
  
  	flip_screen_set(videocontrol & 0x8000);
-@@ -1889,6 +1990,14 @@
+@@ -1888,6 +2008,14 @@
+ 	tilemap_set_scrollx(tilemap[2],0,scroll3x);
  	tilemap_set_scrolly(tilemap[2],0,scroll3y);
  
- 
++
 +#ifdef drv_ssf2t
 +	ssf2t_update_widescreen();
 +	wide_rect = *cliprect;
@@ -297,11 +315,10 @@
 +	wide_rect.max_x = Machine->visible_area.max_x;
 +	cliprect = &wide_rect;
 +#endif
-+
+ 
  	/* Blank screen */
  	fillbitmap(bitmap,Machine->pens[4095],cliprect);
- 
-@@ -1960,9 +2069,15 @@
+@@ -1960,9 +2088,15 @@
  			}
  		}
  
@@ -319,11 +336,10 @@
  
 --- a/src/vidhrdw/midtunit_vidhrdw.c
 +++ b/src/vidhrdw/midtunit_vidhrdw.c
-@@ -689,6 +689,173 @@
- 
+@@ -690,6 +690,186 @@
  /* workaround so comic book offer in mk is correct, without breaking text in mk2 */
  static int mk_delay = 0;
-+
+ 
 +#ifdef drv_umk3
 +/*************************************
 + *
@@ -427,11 +443,24 @@
 +	for (i = 0; i < umk3_tile_count; i++)
 +	{
 +		int ox = umk3_tiles[i].xpos, left, right, p, saved = dma_state.xpos;
-+		if (umk3_tiles[i].offset != dma_state.offset || umk3_tiles[i].command != command ||
++		if (umk3_tiles[i].command != command ||
 +			umk3_tiles[i].width != w || umk3_tiles[i].height != dma_state.height ||
 +			umk3_tiles[i].ypos != dma_state.ypos || umk3_tiles[i].palette != dma_state.palette ||
 +			(ox != x - w && ox != x + w) || umk3_tiles[i].extended)
 +			continue;
++        /* A mixed tile band needs three adjacent cells; two fighters or
++         * unrelated props must never be mistaken for repeating scenery. */
++        if (umk3_tiles[i].offset != dma_state.offset) {
++            int j, third = 0, lo = ox < x ? ox : x, hi = ox > x ? ox : x;
++            for (j = 0; j < umk3_tile_count; ++j)
++                if (j != i && umk3_tiles[j].command == command &&
++                    umk3_tiles[j].palette == dma_state.palette &&
++                    umk3_tiles[j].width == w && umk3_tiles[j].height == dma_state.height &&
++                    umk3_tiles[j].ypos == dma_state.ypos &&
++                    (umk3_tiles[j].xpos == lo - w || umk3_tiles[j].xpos == hi + w))
++                    third = 1;
++            if (!third) continue;
++        }
 +		umk3_tiles[i].extended = 1;
 +		left = ox < x ? ox : x;
 +		right = (ox > x ? ox : x) + w;
@@ -490,10 +519,11 @@
 +	}
 +}
 +#endif
- 
++
  WRITE16_HANDLER( midtunit_dma_w )
  {
-@@ -786,6 +953,17 @@
+ 	static const UINT8 register_map[2][16] =
+@@ -786,6 +966,17 @@
  		goto skipdma;
  	}
  
@@ -511,7 +541,7 @@
  	/* there seems to be two types of behavior for the DMA chip */
  	/* for MK1 and MK2, the upper byte of the LRSKIP is the     */
  	/* starting skip value, and the lower byte is the ending    */
-@@ -803,22 +981,15 @@
+@@ -803,22 +994,15 @@
  	}
  
  	/* then draw */
@@ -539,7 +569,7 @@
  		if (dma_state.xstep && dma_state.ystep)
  			pixels = ((dma_state.width << 8) / dma_state.xstep) * ((dma_state.height << 8) / dma_state.ystep);
  		else
-@@ -884,9 +1055,18 @@
+@@ -884,9 +1068,18 @@
  	/* determine how many pixels to copy */
  	xoffs = cliprect->min_x;
  	width = cliprect->max_x - xoffs + 1;
@@ -558,12 +588,13 @@
  	offset += 512 * cliprect->min_y;
  	offset &= 0x3ffff;
  
-@@ -902,4 +1082,8 @@
+@@ -902,4 +1095,8 @@
  
        offset = (offset + 512) & 0x3ffff;
     }
+-}
 +
 +#ifdef drv_umk3
 +	umk3_tile_count = 0;
 +#endif
- }
++}

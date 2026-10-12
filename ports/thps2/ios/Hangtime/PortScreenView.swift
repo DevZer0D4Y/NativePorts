@@ -14,7 +14,7 @@ final class PortScreenView: UIView {
     var smooth = false { didSet { gpu?.smooth = smooth } }
     override init(frame: CGRect) {
         super.init(frame:frame)
-        backgroundColor = UIColor(red:0.04,green:0.07,blue:0.15,alpha:1)
+        backgroundColor = .black
         do {
             let v = try CRTView(native:true); gpu = v; addSubview(v)
         } catch {
