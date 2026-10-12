@@ -9,6 +9,11 @@ if win:
  t=Path(os.environ.get('PORT_TOOLCHAIN',r/'vendor/llvm-mingw-20260616-ucrt-macos-universal'))
  s=Path(os.environ.get('PORT_SDL',r/'vendor/SDL2-2.32.10/x86_64-w64-mingw32'))
  cc=str(t/'bin/x86_64-w64-mingw32-clang');cmd+=['-I'+str(s/'include/SDL2'),'-L'+str(s/'lib')]
+ icon=port/"desktop/AppIcon.rc"
+ if icon.exists():
+  resource=out/"AppIcon.res"
+  subprocess.run([str(t/"bin/x86_64-w64-mingw32-windres"),"-I"+str(icon.parent),str(icon),"-O","coff","-o",str(resource)],check=True)
+  cmd+=[str(resource)]
 else:cmd+=subprocess.check_output(['sdl2-config','--cflags'],text=True).split()
 cmd+=[str(port/'desktop/main.c'),str(port/'desktop/CRTSDL.c'),str(common/'HangtimeCore.c'),str(common/'ROMAudit.c'),str(r/'.build'/game/platform/'libcore.a')]
 if game=='thps2':cmd+=[str(port/'desktop/CoreGraphics.c'),'-lc++','-liphlpapi']

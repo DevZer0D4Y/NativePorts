@@ -9,6 +9,7 @@
 #include <windows.h>
 #include <commdlg.h>
 #include <xinput.h>
+#include <SDL_syswm.h>
 #endif
 
 /* RetroPad bits read by the core's classic layout: B = Turbo, Y = Pass/Steal, A = Shoot/Block. */
@@ -663,6 +664,15 @@ int main(int argc,char **argv) {
     renderer=window ? SDL_CreateRenderer(window,-1,hidden ? SDL_RENDERER_SOFTWARE : SDL_RENDERER_ACCELERATED) : NULL;
     if (!renderer && window) renderer=SDL_CreateRenderer(window,-1,SDL_RENDERER_SOFTWARE);
     if (!window || !renderer) { fprintf(stderr,"%s\n",SDL_GetError()); SDL_Quit(); return 1; }
+#ifdef _WIN32
+    SDL_SysWMinfo wm;
+    SDL_VERSION(&wm.version);
+    if (SDL_GetWindowWMInfo(window, &wm)) {
+        HICON icon = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(1));
+        SendMessage(wm.info.win.window, WM_SETICON, ICON_BIG, (LPARAM)icon);
+        SendMessage(wm.info.win.window, WM_SETICON, ICON_SMALL, (LPARAM)icon);
+    }
+#endif
     if (snapshots) {
         save_dir=malloc(strlen(argv[2])+2);
         if (save_dir) sprintf(save_dir,"%s/",argv[2]);
