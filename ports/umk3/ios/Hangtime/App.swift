@@ -51,6 +51,7 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
     private var lastSave: CFTimeInterval = 0
     /// AUTO touch mode: the last input came from a gamepad, so the touch overlay steps aside.
     private var gamepadInUse = false
+    private var coreAspect = 4.0 / 3.0
     private var frameAspect: CGFloat = 400.0 / 254.0
     private let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     override var prefersStatusBarHidden: Bool { true }
@@ -113,6 +114,7 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
 
     private func applySettings() {
         screen.colorSides = settings.colorSides
+        ht_set_widescreen(settings.gameWidescreen)
         screen.crt = settings.crtMode == 1
         let filter: CALayerContentsFilter = settings.smoothPixels ? .linear : .nearest
         screen.layer.magnificationFilter = filter; screen.layer.minificationFilter = filter
@@ -245,6 +247,8 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
         guard w > 0, h > 0, let pixels = ht_pixels() else { return }
         let aspect = CGFloat(w) / CGFloat(h)
         if abs(aspect - frameAspect) > 0.001 { frameAspect = aspect; layoutScreen() }
+        // Widescreen can change the picture's shape without changing its size.
+        if abs(ht_aspect_ratio() - coreAspect) > 0.001 { coreAspect = ht_aspect_ratio(); layoutScreen() }
         screen.upload(pixels, width: w, height: h)
     }
 

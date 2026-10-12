@@ -137,7 +137,10 @@ bool ht_start(const char *path, const char *save_directory) {
     else if (!error_text[0]) snprintf(error_text, sizeof error_text, "Unable to start the arcade core.");
     return loaded;
 }
-void ht_run(void) { if (loaded) { retro_run(); ran_frame = true; } }
+extern int gpu_widescreen, gpu_widescreen_active;
+extern void gpu_widescreen_end_frame(void);
+void ht_run(void) { if (loaded) { retro_run(); gpu_widescreen_end_frame(); ran_frame = true; } }
+void ht_set_widescreen(bool enabled) { gpu_widescreen = enabled; }
 bool ht_save_data(void) {
     if(!loaded || !ran_frame)return false;
     const void *data=retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
@@ -155,7 +158,8 @@ unsigned ht_width(void) { return width; }
 unsigned ht_height(void) { return height; }
 double ht_fps(void) { return av.timing.fps > 0 ? av.timing.fps : 59.6374; }
 double ht_sample_rate(void) { return av.timing.sample_rate > 0 ? av.timing.sample_rate : 48000; }
-double ht_aspect_ratio(void) { return 4.0 / 3.0; }
+/* 3D scenes are drawn 3/4 as wide in widescreen and shown at 16:9. */
+double ht_aspect_ratio(void) { return gpu_widescreen && gpu_widescreen_active ? 16.0 / 9.0 : 4.0 / 3.0; }
 const char *ht_error(void) { return error_text; }
 void ht_audio_clear(void) { audio_lock(); audio_head = audio_count = 0; audio_unlock(); }
 void ht_audio_read(float *left, float *right, unsigned frames) {

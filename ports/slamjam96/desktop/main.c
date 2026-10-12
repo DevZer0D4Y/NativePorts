@@ -39,12 +39,13 @@ static int screen_mode = SCREEN_ARCADE;
 static bool fullscreen = true;
 /* Color unused margins while preserving the selected image proportions. */
 static bool colorSides = true;
+static bool game_wide = true;
 /* NewPixie CRT processing, independent of game ROM patches. */
 static int crtMode = 1;
 static const char *crtMode_name[2] = {"OFF","ON"};
 enum { MENU_NONE, MENU_PAUSE, MENU_CONTROLS };
-enum { ITEM_RESUME, ITEM_CRT, ITEM_CONTROLS, ITEM_SIDES, ITEM_SCREEN, ITEM_FULLSCREEN, ITEM_RESTART, ITEM_QUIT, ITEM_COUNT };
-enum { MENU_TOP = 104, MENU_STEP = 54, MENU_H = 46, ROW_TOP = 136, ROW_STEP = 33 };
+enum { ITEM_RESUME, ITEM_CRT, ITEM_CONTROLS, ITEM_WIDE, ITEM_SIDES, ITEM_SCREEN, ITEM_FULLSCREEN, ITEM_RESTART, ITEM_QUIT, ITEM_COUNT };
+enum { MENU_TOP = 104, MENU_STEP = 48, MENU_H = 42, ROW_TOP = 136, ROW_STEP = 33 };
 static int menu, selection, capture = -1;
 static char notice[96];
 static Uint32 notice_until;
@@ -81,7 +82,7 @@ static void config_path(char *out,size_t size) { snprintf(out,size,"%ssettings.c
 static void save_config(void) {
     char path[4096]; config_path(path,sizeof path);
     FILE *f=fopen(path,"w"); if (!f) return;
-    fprintf(f,"screen=%d\nfullscreen=%d\ncolorSides=%d\ncrtMode=%d\n",screen_mode,fullscreen,colorSides,crtMode);
+    fprintf(f,"screen=%d\nfullscreen=%d\ncolorSides=%d\ncrtMode=%d\nwidescreen=%d\n",screen_mode,fullscreen,colorSides,crtMode,game_wide);
     for (int a=0;a<A_COUNT;a++) {
         fprintf(f,"key.%s=%s\npad.%s=",action_id[a],SDL_GetScancodeName(keys[a]),action_id[a]);
         for (int b=0;b<P_COUNT;b++) if (pads[a] & (1u << b)) fprintf(f,"%s ",pad_name[b]);
@@ -100,6 +101,7 @@ static void load_config(void) {
         if (!strcmp(line,"screen")) { int m=atoi(value); screen_mode=m>=0 && m<3 ? m : SCREEN_ARCADE; }
         else if (!strcmp(line,"fullscreen")) fullscreen=atoi(value)!=0;
         else if (!strcmp(line,"colorSides")) colorSides=atoi(value)!=0;
+        else if (!strcmp(line,"widescreen")) game_wide=atoi(value)!=0;
         else if (!strcmp(line,"crtMode")) { int h=atoi(value); crtMode=h>=0 && h<2 ? h : 0; }
         else for (int a=0;a<A_COUNT;a++) {
             if (!strncmp(line,"key.",4) && !strcmp(line+4,action_id[a])) keys[a]=SDL_GetScancodeFromName(value);
@@ -213,6 +215,10 @@ static void toggle_fullscreen(void) {
     SDL_SetWindowFullscreen(window,fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
     save_config();
 }
+static void toggle_widescreen(void) {
+    game_wide=!game_wide; ht_set_widescreen(game_wide); save_config();
+    show_notice(game_wide ? "WIDESCREEN ON" : "WIDESCREEN OFF");
+}
 static void toggle_colorSides(void) {
     colorSides=!colorSides;  save_config();
     show_notice(colorSides ? "COLOR SIDES ON" : "COLOR SIDES OFF");
@@ -263,7 +269,7 @@ static bool load_rom(const char *path) {
     spec.freq=(int)ht_sample_rate(); spec.format=AUDIO_F32SYS; spec.channels=2; spec.samples=1024; spec.callback=audio_callback;
     audio_device=SDL_OpenAudioDevice(NULL,0,&spec,&actual,0);
     if (!audio_device) message(SDL_GetError());
-    SDL_SetWindowTitle(window,"Slam’n’Jam 96 - Esc: menu | F1: controls | F9: colorSides | F10: screen mode | F11: fullscreen");
+    SDL_SetWindowTitle(window,"Slam’n’Jam 96 - Esc: menu | F1: controls | F8: widescreen | F9: color sides | F10: screen mode | F11: fullscreen");
     reset_players(false); set_paused(false);
     show_notice("PRESS 5 FOR A CREDIT, THEN 1 TO START");
     return true;
@@ -395,6 +401,7 @@ static void draw_pause(void) {
     char labels[ITEM_COUNT][40];
     snprintf(labels[ITEM_RESUME],40,"RESUME"); snprintf(labels[ITEM_CONTROLS],40,"CONTROLS");
     snprintf(labels[ITEM_CRT],40,"CRT FILTER: < %s >",crtMode_name[crtMode]);
+    snprintf(labels[ITEM_WIDE],40,"WIDESCREEN: %s",game_wide ? "ON" : "OFF");
     snprintf(labels[ITEM_SIDES],40,"COLOR SIDES: %s",colorSides ? "ON" : "OFF");
     snprintf(labels[ITEM_SCREEN],40,"SCREEN: < %s >",screen_name[screen_mode]);
     snprintf(labels[ITEM_FULLSCREEN],40,"FULLSCREEN: %s",fullscreen ? "ON" : "OFF");
@@ -474,6 +481,7 @@ static void menu_adjust(int delta) {
     if (menu!=MENU_PAUSE) return;
     if (selection==ITEM_SCREEN) cycle_screen(delta);
     else if (selection==ITEM_CRT) cycle_crtMode(delta);
+    else if (selection==ITEM_WIDE) toggle_widescreen();
     else if (selection==ITEM_SIDES) toggle_colorSides();
     else if (selection==ITEM_FULLSCREEN) toggle_fullscreen();
 }
@@ -482,6 +490,7 @@ static void menu_accept(bool *quit) {
     switch (selection) {
     case ITEM_RESUME: close_menu(); break;
     case ITEM_CONTROLS: menu=MENU_CONTROLS; selection=0; break;
+    case ITEM_WIDE: toggle_widescreen(); break;
     case ITEM_SIDES: toggle_colorSides(); break;
     case ITEM_CRT: cycle_crtMode(1); break;
     case ITEM_SCREEN: cycle_screen(1); break;
@@ -509,6 +518,7 @@ static void key_down(const SDL_KeyboardEvent *event,bool *quit) {
         return;
     }
     if (s==SDL_SCANCODE_F10) { if (!event->repeat) cycle_screen(1); return; }
+    if (s==SDL_SCANCODE_F8) { if (!event->repeat) toggle_widescreen(); return; }
     if (s==SDL_SCANCODE_F9) { if (!event->repeat) toggle_colorSides(); return; }
     if (menu==MENU_NONE) {
         if (event->repeat) return;
@@ -666,7 +676,7 @@ int main(int argc,char **argv) {
         if (save_dir) sprintf(save_dir,"%s/",argv[2]);
     } else save_dir=SDL_GetPrefPath("NativePorts","slamjam96");
     if (!save_dir) { message("Could not create the data folder."); SDL_Quit(); return 1; }
-    load_config(); reset_players(false);
+    load_config(); ht_set_widescreen(game_wide); reset_players(false);
     
     
     if (fullscreen && !hidden) SDL_SetWindowFullscreen(window,SDL_WINDOW_FULLSCREEN_DESKTOP);

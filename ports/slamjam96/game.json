@@ -34,7 +34,7 @@
       "Windows"
     ],
     "stretch_satisfies_requirement": false,
-    "status": "game_specific_patch_pending",
+    "status": "implemented",
     "completion_requires": [
       "Verify extra scenery during gameplay without stretching or cropping",
       "Verify camera and object visibility at both edges",
@@ -42,7 +42,8 @@
       "Verify game menus have colored side areas",
       "Verify live toggle and original view restoration",
       "Verify with supported game image on iOS and Windows"
-    ]
+    ],
+    "implementation": "3D scenes are drawn 3/4 as wide and shown at 16:9, rectangles included; geometry the game draws beyond its 4:3 screen fills the sides. Movies and picture screens stay 4:3. Some camera angles leave a dark corner where the game draws nothing."
   },
   "ui_reference": "NBA Hangtime 0.4.2",
   "controller_defaults": {

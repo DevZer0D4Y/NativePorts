@@ -13,16 +13,30 @@ if ios:
  sdk=subprocess.check_output(['xcrun','--sdk',a.platform,'--show-sdk-path'],text=True).strip();flag=' -target arm64-apple-ios16.0'+('-simulator' if a.platform=='iphonesimulator' else '')+' -isysroot '+sdk
  cc+=flag;cxx+=flag
 lib=b/'libcore.a'
+def sync(src):
+ # Copy the reviewed vendor sources into this cached build. The cores include
+ # .c files from other .c files and make does not see headers, so any change
+ # rebuilds every object of the core.
+ changed=False
+ for source in src.rglob('*'):
+  if not source.is_file() or source.suffix in ['.o','.a','.d'] or '.git' in source.parts: continue
+  target=b/source.relative_to(src)
+  if not target.exists() or not filecmp.cmp(source,target,shallow=False):
+   target.parent.mkdir(parents=True,exist_ok=True)
+   shutil.copy2(source,target); changed=True
+ if changed:
+  for obj in b.rglob('*.o'): obj.unlink()
+  if lib.exists(): lib.unlink()
 # Every frontend compiles against the libretro headers shipped with this core.
 fetch('mame2003-plus')
 if a.game in ['ssf2t','umk3']:
- if not (b/'Makefile').exists():shutil.copytree(r/'vendor/mame2003-plus',b,dirs_exist_ok=True)
+ sync(r/'vendor/mame2003-plus')
  drv='drv_'+a.game
  cmd=['make','-j2','platform='+('win' if win else 'osx'),'INCLUDE_DRV='+drv,'STATIC_LINKING=1','TARGET='+str(lib),'CC='+cc,'AR='+ar,'PLATCFLAGS=-D'+drv+' -DSPLIT_CORE -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-error=incompatible-pointer-types']
  if win:cmd+=['system_platform=win','SPLIT_UP_LINK=0']
 elif a.game=='slamjam96':
  src=fetch('pcsx')
- if not (b/'Makefile').exists():shutil.copytree(src,b,dirs_exist_ok=True)
+ sync(src)
  cmd=['make','-f','Makefile.libretro','-j2','platform='+('win' if win else 'ios-arm64' if ios else 'osx'),'STATIC_LINKING=1','TARGET='+str(lib),'CC='+cc,'CXX='+cxx,'AR='+ar,'DYNAREC=0','HAVE_PHYSICAL_CDROM=0','USE_ASYNC_CDROM=0','USE_ASYNC_GPU=0','USE_ASYNC_SPU=0','NDRC_THREAD=0']
 elif a.game=='thps2':
  cxx+=' -std=c++11'

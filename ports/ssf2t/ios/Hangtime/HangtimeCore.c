@@ -16,6 +16,7 @@ static void audio_lock(void) { pthread_mutex_lock(&audio_mutex); }
 static void audio_unlock(void) { pthread_mutex_unlock(&audio_mutex); }
 #endif
 extern int sf_save_nvram(void);
+extern void ssf2t_set_widescreen(int enable);
 
 static bool loaded, initialized, ran_frame;
 static char directory[4096], error_text[8192];
@@ -144,7 +145,9 @@ unsigned ht_width(void) { return width; }
 unsigned ht_height(void) { return height; }
 double ht_fps(void) { return av.timing.fps > 0 ? av.timing.fps : 59.6374; }
 double ht_sample_rate(void) { return av.timing.sample_rate > 0 ? av.timing.sample_rate : 48000; }
-double ht_aspect_ratio(void) { return 4.0 / 3.0; }
+/* The game's 384 columns fill a 4:3 monitor; widescreen fights show 512. */
+double ht_aspect_ratio(void) { return width > 384 ? 4.0 / 3.0 * width / 384.0 : 4.0 / 3.0; }
+void ht_set_widescreen(bool enabled) { ssf2t_set_widescreen(enabled); }
 const char *ht_error(void) { return error_text; }
 void ht_audio_clear(void) { audio_lock(); audio_head = audio_count = 0; audio_unlock(); }
 void ht_audio_read(float *left, float *right, unsigned frames) {

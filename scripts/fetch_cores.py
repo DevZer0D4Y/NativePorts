@@ -7,7 +7,7 @@ r = Path(__file__).resolve().parents[1]
 CORES = {
  'mame2003-plus': ('libretro/mame2003-plus-libretro', 'e05caba0aa33cae580d104c45c6caa6406617e3b', 'mame2003-plus.patch'),
  'flycast': ('libretro/flycast', '497de2593bc8bef1a31a3105a0a57f6a059b6ca7', 'flycast.patch'),
- 'pcsx': ('libretro/pcsx_rearmed', 'c8816799b50388e61cfe237fe2cdbb7d8175f20a', None),
+ 'pcsx': ('libretro/pcsx_rearmed', 'c8816799b50388e61cfe237fe2cdbb7d8175f20a', 'pcsx.patch'),
 }
 
 def fetch(name, force=False):

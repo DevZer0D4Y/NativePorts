@@ -1,7 +1,6 @@
 #include <stdbool.h>
 #ifdef PORT_THPS2
 void ht_run_frame(bool present);
-void ht_set_widescreen(bool enabled);
 #define PORT_ACTION_END A_START
 #else
 #define PORT_ACTION_END A_COIN
@@ -12,7 +11,6 @@ void ht_set_widescreen(bool enabled);
 #ifdef PORT_THPS2
 /* This input test links the small arcade bridge; it never runs a game. */
 void ht_run_frame(bool present) { ht_run(); }
-void ht_set_widescreen(bool enabled) {}
 #endif
 #include <assert.h>
 int main(void){
