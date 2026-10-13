@@ -43,7 +43,7 @@
       "Verify live toggle and original view restoration",
       "Verify with supported game image on iOS and Windows"
     ],
-    "implementation": "3D scenes are drawn 3/4 as wide and shown at 16:9, rectangles included; geometry the game draws beyond its 4:3 screen fills the sides. Movies and picture screens stay 4:3. Some camera angles leave a dark corner where the game draws nothing."
+    "implementation": "426-column native drawing canvas, isolated from guest texture VRAM, renders the software-projected guard-band geometry at original pixel scale. HUD stays in the central 320 columns; movies remain 4:3."
   },
   "ui_reference": "NBA Hangtime 0.4.2",
   "controller_defaults": {

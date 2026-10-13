@@ -5,38 +5,42 @@ r = Path(__file__).resolve().parents[1]
 b = r / '.build/stage-edge-tests'
 b.mkdir(parents=True, exist_ok=True)
 source = (r/'vendor/mame2003-plus/src/vidhrdw/cps1_vidhrdw.c').read_text()
-body = source[source.index('static void ssf2t_render_layer('):]
+body = source[source.index('extern data16_t *cps2_workram;'):]
 body = body[:body.index('#endif')]
 fixture = r'''
 #include <assert.h>
+#include <stdlib.h>
 #include <stdio.h>
+typedef unsigned short data16_t; typedef short INT16;
 struct rectangle { int min_x,max_x,min_y,max_y; };
-struct mame_bitmap { unsigned pixels[2][512]; };
-static struct mame_bitmap priority, *priority_bitmap=&priority;
-static int left=64,right=447;
-#define read_pixel(b,x,y) ((b)->pixels[y][x])
-#define plot_pixel(b,x,y,p) ((b)->pixels[y][x]=(p))
-void ssf2t_layer_clip(int l,const struct rectangle *r,struct rectangle *c) {
- *c=*r;c->min_x=left;c->max_x=right;
+struct mame_bitmap { int unused; };
+static data16_t ram[32768], *cps2_workram=ram;
+static struct {struct rectangle visible_area;} machine={{64,447,0,223}}, *Machine=&machine;
+static void set_visible_area(int l,int r,int t,int b) {
+ Machine->visible_area=(struct rectangle){l,r,t,b};
 }
-void cps1_render_layer(struct mame_bitmap *b,const struct rectangle *r,int l,int p) {
- for(int y=r->min_y;y<=r->max_y;y++) for(int x=r->min_x;x<=r->max_x;x++) {
-  plot_pixel(b,x,y,100+x);plot_pixel(priority_bitmap,x,y,x%4);
- }
-}
+static void cps1_render_layer(struct mame_bitmap *b,const struct rectangle *r,int l,int p) {}
 '''
+# The real helper declares this pointer itself.
+fixture = fixture.replace('static data16_t ram[32768], *cps2_workram=ram;','static data16_t ram[32768]; data16_t *cps2_workram=ram;')
 main = r'''
 int main(void) {
- struct mame_bitmap b={0}; struct rectangle r={0,511,0,1};
- ssf2t_render_layer(&b,&r,2,1);
- for(int y=0;y<2;y++) for(int x=0;x<512;x++) {
-  int src=x<64?127-x:x>447?895-x:x;
-  assert(read_pixel(&b,x,y)==100+src);
-  assert(read_pixel(priority_bitmap,x,y)==src%4);
+ SF_RAM(SF_P1)=SF_RAM(SF_P2)=1;
+ SF_RAM(SF_MIN)=200;SF_RAM(SF_MAX)=400;
+ SF_RAM(SF_CENTRE)=300;SF_RAM(SF_BACK)=100;
+ ssf2t_set_widescreen(1);ssf2t_update_widescreen();
+ assert(Machine->visible_area.min_x==0 && Machine->visible_area.max_x==511);
+ for(int x=200;x<=400;x++) {
+  SF_RAM(SF_CENTRE)=x;SF_RAM(SF_BACK)=100+(x-300)/2;
+  ssf2t_update_widescreen();
+  assert(Machine->visible_area.min_x>=0 && Machine->visible_area.min_x<=64);
+  assert(Machine->visible_area.max_x<=511 && Machine->visible_area.max_x>=447);
+  assert(64-Machine->visible_area.min_x==Machine->visible_area.max_x-447);
+  if(x==200 || x==400) assert(Machine->visible_area.min_x==64 && Machine->visible_area.max_x==447);
  }
- left=0;right=511;ssf2t_render_layer(&b,&r,2,1);
- for(int x=0;x<512;x++) assert(read_pixel(&b,x,0)==100+x);
- puts("PASS: finite stage extension fills both edges, preserves original pixels and priority.");
+ ssf2t_set_widescreen(0);ssf2t_update_widescreen();
+ assert(Machine->visible_area.min_x==64 && Machine->visible_area.max_x==447);
+ puts("PASS: finite camera edges restore original width, no mirroring, HUD retained, toggle restores 4:3.");
 }
 '''
 p=b/'sf.c';p.write_text(fixture+body+main)

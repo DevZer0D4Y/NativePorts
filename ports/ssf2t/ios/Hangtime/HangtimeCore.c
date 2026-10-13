@@ -17,6 +17,8 @@ static void audio_unlock(void) { pthread_mutex_unlock(&audio_mutex); }
 #endif
 extern int sf_save_nvram(void);
 extern void ssf2t_set_widescreen(int enable);
+extern int ssf2t_is_fighting(void);
+static bool widescreen_requested = true;
 
 static bool loaded, initialized, ran_frame;
 static char directory[4096], error_text[8192];
@@ -82,11 +84,15 @@ static bool environment(unsigned command, void *data) {
 }
 static void video(const void *data, unsigned w, unsigned h, size_t pitch) {
     if (!data || w > 2048 || h > 1024) return;
-    width = w; height = h;
+    unsigned pad = widescreen_requested && !ssf2t_is_fighting() && w == 384 ? 64 : 0;
+    width = w + pad * 2; height = h;
+    if (pad) for (unsigned i = 0; i < width * h; ++i) {
+        pixels[i*4] = 12; pixels[i*4+1] = 22; pixels[i*4+2] = 43; pixels[i*4+3] = 255;
+    }
     for (unsigned y = 0; y < h; ++y) {
         const uint8_t *row = (const uint8_t *)data + y * pitch;
         for (unsigned x = 0; x < w; ++x) {
-            uint8_t *p = pixels + (y * w + x) * 4;
+            uint8_t *p = pixels + (y * width + x + pad) * 4;
             if (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) {
                 uint32_t value; memcpy(&value, row + x * 4, 4);
                 p[0] = value >> 16; p[1] = value >> 8; p[2] = value;
@@ -147,7 +153,7 @@ double ht_fps(void) { return av.timing.fps > 0 ? av.timing.fps : 59.6374; }
 double ht_sample_rate(void) { return av.timing.sample_rate > 0 ? av.timing.sample_rate : 48000; }
 /* The game's 384 columns fill a 4:3 monitor; widescreen fights show 512. */
 double ht_aspect_ratio(void) { return width > 384 ? 4.0 / 3.0 * width / 384.0 : 4.0 / 3.0; }
-void ht_set_widescreen(bool enabled) { ssf2t_set_widescreen(enabled); }
+void ht_set_widescreen(bool enabled) { widescreen_requested = enabled; ssf2t_set_widescreen(enabled); }
 const char *ht_error(void) { return error_text; }
 void ht_audio_clear(void) { audio_lock(); audio_head = audio_count = 0; audio_unlock(); }
 void ht_audio_read(float *left, float *right, unsigned frames) {

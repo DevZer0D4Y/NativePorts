@@ -134,7 +134,7 @@ bool ht_start(const char *path, const char *save_directory) {
     if (loaded) { retro_get_system_av_info(&av); for (unsigned i = 0; i < 4; ++i) retro_set_controller_port_device(i, RETRO_DEVICE_JOYPAD); }
     if(loaded) { size_t n=retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);void *p=retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
       char path[8192];snprintf(path,sizeof path,"%s/save.srm",directory);FILE *f=fopen(path,"rb");if(f){if(p&&n)fread(p,1,n,f);fclose(f);} }
-    else if (!error_text[0]) snprintf(error_text, sizeof error_text, "Unable to start the arcade core.");
+    else if (!error_text[0]) snprintf(error_text, sizeof error_text, "Unable to start the PlayStation core.");
     return loaded;
 }
 extern int gpu_widescreen, gpu_widescreen_active;
@@ -158,8 +158,8 @@ unsigned ht_width(void) { return width; }
 unsigned ht_height(void) { return height; }
 double ht_fps(void) { return av.timing.fps > 0 ? av.timing.fps : 59.6374; }
 double ht_sample_rate(void) { return av.timing.sample_rate > 0 ? av.timing.sample_rate : 48000; }
-/* 3D scenes are drawn 3/4 as wide in widescreen and shown at 16:9. */
-double ht_aspect_ratio(void) { return gpu_widescreen && gpu_widescreen_active ? 16.0 / 9.0 : 4.0 / 3.0; }
+/* Extra native columns retain the original pixel and object proportions. */
+double ht_aspect_ratio(void) { return width > 320 ? (4.0 / 3.0) * width / 320.0 : 4.0 / 3.0; }
 const char *ht_error(void) { return error_text; }
 void ht_audio_clear(void) { audio_lock(); audio_head = audio_count = 0; audio_unlock(); }
 void ht_audio_read(float *left, float *right, unsigned frames) {
