@@ -17,7 +17,7 @@ enum { PAD_TURBO = 1 << 0, PAD_PASS = 1 << 1, PAD_COIN = 1 << 2, PAD_START = 1 <
        PAD_UP = 1 << 4, PAD_DOWN = 1 << 5, PAD_LEFT = 1 << 6, PAD_RIGHT = 1 << 7, PAD_SHOOT = 1 << 8 };
 enum { A_UP, A_DOWN, A_LEFT, A_RIGHT, A_SHOOT, A_PASS, A_TURBO, A_SPIN, A_DUNK, A_SHOVE, A_COIN, A_START, A_COUNT };
 static const char *action_title[A_COUNT] = {"UP","DOWN","LEFT","RIGHT","SHOOT / JUMP","PASS / CHANGE","TURBO","STEAL","PICK","ISOLATE","SELECT","START"};
-static const char *action_id[A_COUNT] = {"up","down","left","right","shoot","pass","turbo","spin","dunk","shove","coin","start"};
+static const char *action_id[A_COUNT] = {"up","down","left","right","shoot","pass","turbo","spin","dunk","shove","select","start"};
 static const uint16_t action_bits[A_COUNT] = {PAD_UP,PAD_DOWN,PAD_LEFT,PAD_RIGHT,256,1,4096,2,1024,2048,4,8};
 /* Share and the paddles exist on Xbox Series and Elite controllers. pad_name is what settings.cfg stores,
    pad_title what the controls screen shows (Xbox names). */
@@ -28,14 +28,14 @@ static const char *pad_title[P_COUNT] = {"A","B","X","Y","LB","RB","LT","RT","LS
 /* Slam uses four PS1 multitap slots in connection order. */
 static const unsigned player_port[4] = {0, 1, 2, 3};
 static const SDL_Scancode default_keys[A_COUNT] = {SDL_SCANCODE_UP,SDL_SCANCODE_DOWN,SDL_SCANCODE_LEFT,SDL_SCANCODE_RIGHT,
-    SDL_SCANCODE_X,SDL_SCANCODE_C,SDL_SCANCODE_Z,SDL_SCANCODE_A,SDL_SCANCODE_S,SDL_SCANCODE_D,SDL_SCANCODE_5,SDL_SCANCODE_1};
+    SDL_SCANCODE_X,SDL_SCANCODE_C,SDL_SCANCODE_Z,SDL_SCANCODE_A,SDL_SCANCODE_S,SDL_SCANCODE_D,SDL_SCANCODE_TAB,SDL_SCANCODE_1};
 /* NBA 2K style pad: X shoots, A passes, triggers are Turbo. Start is fixed: tap = START, hold = pause. */
 static const unsigned default_pads[A_COUNT] = {0,0,0,0,1u<<P_X,1u<<P_A,1u<<P_RT|1u<<P_LT|1u<<P_RB,1u<<P_B,1u<<P_Y,1u<<P_LB,1u<<P_BACK,0};
 static SDL_Scancode keys[A_COUNT];
 static unsigned pads[A_COUNT];
 
 enum { SCREEN_FULL, SCREEN_SQUARE, SCREEN_ARCADE };
-static const char *screen_name[3] = {"FULL","SQUARE","ARCADE"};
+static const char *screen_name[3] = {"FULL","SQUARE","ORIGINAL"};
 static int screen_mode = SCREEN_ARCADE;
 static bool fullscreen = true;
 /* Color unused margins while preserving the selected image proportions. */
@@ -105,14 +105,15 @@ static void load_config(void) {
         else if (!strcmp(line,"widescreen")) game_wide=atoi(value)!=0;
         else if (!strcmp(line,"crtMode")) { int h=atoi(value); crtMode=h>=0 && h<2 ? h : 0; }
         else for (int a=0;a<A_COUNT;a++) {
-            if (!strncmp(line,"key.",4) && !strcmp(line+4,action_id[a])) keys[a]=SDL_GetScancodeFromName(value);
-            if (!strncmp(line,"pad.",4) && !strcmp(line+4,action_id[a])) {
+            if (!strncmp(line,"key.",4) && (!strcmp(line+4,action_id[a]) || (a==A_COIN && !strcmp(line+4,"coin")))) keys[a]=SDL_GetScancodeFromName(value);
+            if (!strncmp(line,"pad.",4) && (!strcmp(line+4,action_id[a]) || (a==A_COIN && !strcmp(line+4,"coin")))) {
                 pads[a]=0;
                 for (char *t=strtok(value," ");t;t=strtok(NULL," ")) for (int b=0;b<P_COUNT;b++) if (!strcmp(t,pad_name[b])) pads[a] |= 1u << b;
             }
         }
     }
     fclose(f);
+    if (keys[A_COIN] == SDL_SCANCODE_5) keys[A_COIN] = SDL_SCANCODE_TAB;
 }
 static void bind_key(int action,SDL_Scancode scancode) {
     /* Swap with whatever action owned the key, so nothing is left with a duplicate. */
@@ -272,7 +273,7 @@ static bool load_rom(const char *path) {
     if (!audio_device) message(SDL_GetError());
     SDL_SetWindowTitle(window,"Slam’n’Jam 96 - Esc: menu | F1: controls | F8: widescreen | F9: color sides | F10: screen mode | F11: fullscreen");
     reset_players(false); set_paused(false);
-    show_notice("PRESS 5 FOR A CREDIT, THEN 1 TO START");
+    show_notice("PRESS 1 OR CONTROLLER START TO PLAY");
     return true;
 }
 static void choose_file(void) {
@@ -406,7 +407,7 @@ static void draw_pause(void) {
     snprintf(labels[ITEM_SIDES],40,"COLOR SIDES: %s",colorSides ? "ON" : "OFF");
     snprintf(labels[ITEM_SCREEN],40,"SCREEN: < %s >",screen_name[screen_mode]);
     snprintf(labels[ITEM_FULLSCREEN],40,"FULLSCREEN: %s",fullscreen ? "ON" : "OFF");
-    snprintf(labels[ITEM_RESTART],40,"RESTART ARCADE"); snprintf(labels[ITEM_QUIT],40,"QUIT GAME");
+    snprintf(labels[ITEM_RESTART],40,"RESTART GAME"); snprintf(labels[ITEM_QUIT],40,"QUIT GAME");
     for (int i=0;i<ITEM_COUNT;i++) {
         int y=MENU_TOP+i*MENU_STEP; bool on=i==selection;
         if (on) fill(200,y,400,MENU_H,252,188,41,255); else fill(200,y,400,MENU_H,0,0,0,150);
@@ -496,7 +497,7 @@ static void menu_accept(bool *quit) {
     case ITEM_CRT: cycle_crtMode(1); break;
     case ITEM_SCREEN: cycle_screen(1); break;
     case ITEM_FULLSCREEN: toggle_fullscreen(); break;
-    case ITEM_RESTART: ht_reset(); close_menu(); show_notice("ARCADE RESTARTED"); break;
+    case ITEM_RESTART: ht_reset(); close_menu(); show_notice("GAME RESTARTED"); break;
     case ITEM_QUIT: *quit=true; break;
     }
 }
@@ -636,7 +637,7 @@ static void run_snapshots(const char *directory) {
     screen_mode=SCREEN_ARCADE; menu=MENU_PAUSE; selection=ITEM_SIDES; snapshot(directory,"menu-pause");
     menu=MENU_CONTROLS; selection=A_TURBO; snapshot(directory,"menu-controls");
     capture=A_SHOOT; selection=A_SHOOT; snapshot(directory,"menu-capture");
-    menu=MENU_NONE; capture=-1; show_notice("PRESS 5 FOR A CREDIT, THEN 1 TO START"); snapshot(directory,"game-notice");
+    menu=MENU_NONE; capture=-1; show_notice("PRESS 1 OR CONTROLLER START TO PLAY"); snapshot(directory,"game-notice");
     running=false; snapshot(directory,"launcher"); running=true;
     /* the attract demo reaches the court a little later */
     colorSides=true;  notice[0]=0;

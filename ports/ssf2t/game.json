@@ -43,6 +43,6 @@
       "Verify live toggle and original view restoration",
       "Verify with supported game image on iOS and Windows"
     ],
-    "implementation": "Full 512-pixel CPS2 rows during fights; each tilemap layer is clipped to its stage art, so stage ends stay dark instead of showing unused tiles. HUD unchanged; menus 4:3."
+    "implementation": "Expanded gameplay view reduces symmetrically to the original 384-column window at finite stage limits, without reflected art. Menus retain original pixels centered in a 512-column frame with colored sides."
   }
 }

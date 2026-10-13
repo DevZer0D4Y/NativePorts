@@ -1,44 +1,11 @@
---- a/libpcsxcore/gte.c
-+++ b/libpcsxcore/gte.c
-@@ -561,6 +561,12 @@
- 
- #endif
- 
-+/* Narrow projection before the game clips/culls geometry, not after DMA. */
-+extern int gpu_widescreen, gpu_widescreen_active;
-+static inline s64 port_project_x(s64 delta) {
-+    return gpu_widescreen && gpu_widescreen_active ? delta * 3 / 4 : delta;
-+}
-+
- static inline force_inline void gteRTPS(psxCP2Regs *regs, int shift, int lm)
- {
- 	s32 vx = gteVX0, vy = gteVY0, vz = gteVZ0;
-@@ -588,7 +594,7 @@
- 	gteSXY0 = gteSXY1;
- 	gteSXY1 = gteSXY2;
- 
--	gteSX2 = limG1(&flags, mac0flags(&flags, gteOFX + (s64)gteIR1 * quotient) >> 16);
-+	gteSX2 = limG1(&flags, mac0flags(&flags, gteOFX + port_project_x((s64)gteIR1 * quotient)) >> 16);
- 	gteSY2 = limG2(&flags, mac0flags(&flags, gteOFY + (s64)gteIR2 * quotient) >> 16);
- 
- 	gteMAC0 = mac0 = mac0flags(&flags, gteDQB + (s64)gteDQA * quotient);
-@@ -624,7 +630,7 @@
- 		sz3 = limD(&flags, sz3);
- 		quotient = divide(&flags, h, sz3);
- 		fSZ(v) = sz3;
--		fSX(v) = limG1(&flags, mac0flags(&flags, gteOFX + (s64)ir1 * quotient) >> 16);
-+		fSX(v) = limG1(&flags, mac0flags(&flags, gteOFX + port_project_x((s64)ir1 * quotient)) >> 16);
- 		fSY(v) = limG2(&flags, mac0flags(&flags, gteOFY + (s64)ir2 * quotient) >> 16);
- 	}
- 
 --- a/plugins/gpu_neon/psx_gpu/psx_gpu_parse.c
 +++ b/plugins/gpu_neon/psx_gpu/psx_gpu_parse.c
-@@ -282,6 +282,26 @@
+@@ -282,6 +282,43 @@
      render_triangle_p(psx_gpu, triangle.vertexes, current_command);
  }
  
-+/* GTE widens the view before guest clipping. DMA primitives, sprite UVs and
-+   native sprite rasterization stay intact; movies keep the original aspect. */
++/* Native software geometry is rendered into an expanded GPU canvas.
++   Movies keep their original drawing area and aspect. */
 +int gpu_widescreen, gpu_widescreen_active;
 +static unsigned gpu_frame_prims, gpu_recent_prims[8], gpu_recent_slot;
 +
@@ -57,16 +24,137 @@
 +    gpu_widescreen_active = 0;
 +}
 +
++/* Slam renders software-projected coordinates, including a 64-pixel guard
++ * band. Give those native commands a wider canvas; retain sprite UVs, size,
++ * clipping and rasterization instead of converting them into texture quads. */
++static void port_draw_window(psx_gpu_struct *g, const u32 *regs, int wide)
++{
++  int left = regs[3] & 1023, right = regs[4] & 1023;
++  int full = wide && right - left == 319 && right + 106 < 1024;
++  int bank = full && left == 320 ? 192 : 0;
++  g->offset_x = sign_extend_11bit(regs[5]) + (full ? 53 : 0) + bank;
++  g->viewport_start_x = left + bank;
++  g->viewport_end_x = right + (full ? 106 : 0) + bank;
++#ifdef TEXTURE_CACHE_4BPP
++  g->viewport_mask = texture_region_mask(g->viewport_start_x,g->viewport_start_y,
++    g->viewport_end_x,g->viewport_end_y);
++#endif
++}
++
  u32 gpu_parse(psx_gpu_struct *psx_gpu, u32 *list, u32 size, u32 *ex_regs,
   s32 *cpu_cycles_sum_out, s32 *cpu_cycles_last, u32 *last_command)
  {
-@@ -302,6 +322,9 @@
-       current_command = (u32)-1;
+@@ -303,6 +340,10 @@
        break;
      }
-+
-+    if (current_command >= 0x20 && current_command < 0x80)
-+      gpu_frame_prims++;
  
++    if (current_command >= 0x20 && current_command < 0x40)
++      gpu_frame_prims++;
++
++    port_draw_window(psx_gpu, ex_regs, gpu_widescreen && gpu_widescreen_active);
      switch(current_command)
      {
+       case 0x00:
+@@ -316,7 +357,14 @@
+         u32 height = list_s16[5] & 0x1FF;
+         u32 color = list[0] & 0xFFFFFF;
+ 
+-        do_fill(psx_gpu, x, y, width, height, color);
++        if (gpu_widescreen && gpu_widescreen_active && width == 320 && (x == 0 || x == 320))
++          do_fill(psx_gpu, x == 320 ? 512 : x, y, 432, height, color);
++        else {
++          u16 *out = psx_gpu->vram_out_ptr;
++          psx_gpu->vram_out_ptr = psx_gpu->vram_ptr;
++          do_fill(psx_gpu, x, y, width, height, color);
++          psx_gpu->vram_out_ptr = out;
++        }
+         gput_sum(cpu_cycles_sum, cpu_cycles, gput_fill(width, height));
+         break;
+       }
+@@ -808,6 +856,7 @@
+   }
+ 
+ breakloop:
++  port_draw_window(psx_gpu, ex_regs, 0);
+   *cpu_cycles_sum_out += cpu_cycles_sum;
+   *cpu_cycles_last = cpu_cycles;
+   *last_command = current_command;
+--- a/plugins/gpu_neon/psx_gpu_if.c
++++ b/plugins/gpu_neon/psx_gpu_if.c
+@@ -33,12 +33,15 @@
+ #include "psx_gpu/psx_gpu.c"
+ #include "psx_gpu/psx_gpu_parse.c"
+ 
++uint16_t port_wide_vram[1024*512] __attribute__((aligned(256)));
+ static psx_gpu_struct egpu __attribute__((aligned(256)));
+ 
+ int renderer_do_cmd_list(uint32_t *list, int count, uint32_t *ex_regs,
+  int *cycles_sum, int *cycles_last, int *last_cmd)
+ {
+   int ret;
++  int wide = gpu_widescreen && gpu_widescreen_active && gpu.screen.hres == 320;
++  egpu.vram_out_ptr = wide ? port_wide_vram : egpu.vram_ptr;
+ 
+   if (gpu.state.enhancement_active)
+     ret = gpu_parse_enhanced(&egpu, list, count * 4, ex_regs,
+@@ -47,6 +50,19 @@
+     ret = gpu_parse(&egpu, list, count * 4, ex_regs,
+             cycles_sum, cycles_last, (u32 *)last_cmd);
+ 
++  if (wide) {
++    int x = ex_regs[3] & 1023, y = (ex_regs[3] >> 10) & 511;
++    int right = ex_regs[4] & 1023, bottom = (ex_regs[4] >> 10) & 511;
++    flush_render_block_buffer(&egpu);
++    /* Preserve the guest framebuffer and keep textures in native VRAM intact.
++     * Wide buffers live in independent 512-column banks, never over textures. */
++    if (right - x == 319 && (x == 0 || x == 320)) {
++      int src = (x == 320 ? 512 : 0) + 53;
++      for (; y <= bottom; ++y)
++        memcpy(egpu.vram_ptr + y*1024+x, port_wide_vram+y*1024+src,320*2);
++    }
++  }
++  egpu.vram_out_ptr = egpu.vram_ptr;
+   ex_regs[1] &= ~0x1ff;
+   ex_regs[1] |= egpu.texture_settings & 0x1ff;
+   return ret;
+--- a/plugins/gpulib/vout_pl.c
++++ b/plugins/gpulib/vout_pl.c
+@@ -25,6 +25,13 @@
+   return 0;
+ }
+ 
++extern int gpu_widescreen, gpu_widescreen_active;
++extern uint16_t port_wide_vram[];
++static int port_extra_width(struct psx_gpu *gpu) {
++  return gpu_widescreen && gpu_widescreen_active && gpu->screen.hres == 320 &&
++    !(gpu->status & PSX_GPU_STATUS_RGB24) ? 106 : 0;
++}
++
+ static void check_mode_change(struct psx_gpu *gpu, int force)
+ {
+   int w = gpu->screen.hres;
+@@ -33,6 +40,7 @@
+ 
+   if (gpu->state.screen_centering_type == C_BORDERLESS)
+     h = gpu->screen.h;
++  w += port_extra_width(gpu);
+   w_out = w, h_out = h;
+ #ifdef RAW_FB_DISPLAY
+   w = w_out = (gpu->status & PSX_GPU_STATUS_RGB24) ? 2048/3 : 1024;
+@@ -73,11 +81,15 @@
+   uint8_t *vram = (uint8_t *)gpu->vram;
+   int x = gpu->screen.x;
+   int y = gpu->screen.y;
+-  int w = gpu->screen.w;
++  int w = gpu->screen.w + port_extra_width(gpu);
+   int h = gpu->screen.h;
+   int vram_h = 512;
+   int src_x2 = 0;
+   int offset;
++  if (port_extra_width(gpu)) {
++    vram = (uint8_t *)port_wide_vram;
++    if (src_x == 320) src_x = 512;
++  }
+ 
+ #ifdef RAW_FB_DISPLAY
+   w = (gpu->status & PSX_GPU_STATUS_RGB24) ? 2048/3 : 1024;

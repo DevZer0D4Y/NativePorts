@@ -293,7 +293,7 @@ final class PauseMenuView: UIView {
             add(ChoiceRow("PIXELS", ["SHARP", "SMOOTH"], selected: settings.smoothPixels ? 1 : 0) { [weak self] in
                 self?.settings.smoothPixels = $0 == 1; changed()
             })
-            add(note("WIDESCREEN shows more of each stage during fights, with nothing stretched; where a stage ends, the edge stays dark. Menus stay 4:3. COLOR SIDES fills unused space. ARCADE keeps the monitor proportions; FULL stretches to fill the display."))
+            add(note("WIDESCREEN shows more of each stage during fights, with nothing stretched; the view stops at finite stage edges. Menus keep their original proportions with colored sides. COLOR SIDES fills unused space. ARCADE keeps the monitor proportions; FULL stretches to fill the display."))
         case .touch:
             add(ChoiceRow("TOUCH CONTROLS", ["AUTO", "ON", "OFF"], selected: settings.touchMode.rawValue) { [weak self] in
                 self?.settings.touchMode = GameSettings.TouchMode(rawValue: $0) ?? .auto; changed()

@@ -172,7 +172,7 @@
     }
 --- a/src/vidhrdw/cps1_vidhrdw.c
 +++ b/src/vidhrdw/cps1_vidhrdw.c
-@@ -1840,10 +1840,130 @@
+@@ -1840,10 +1840,132 @@
  
  ***************************************************************************/
  
@@ -188,8 +188,8 @@
 +   scenery around the 4:3 view and the fighters stay inside it. The camera centre
 +   moves between the stage limits, so the scenery of the main layer (scroll 2)
 +   ends 192 pixels beyond them; a parallax layer (scroll 3) scrolls in proportion
-+   to the camera and covers less. Each layer is clipped to the columns its art
-+   covers, so the tilemap's unused tiles never show. Menus stay 4:3. */
++   to the camera and covers less. The visible window is reduced at finite stage edges, so unsupported columns
++   never enter the frame. Menus use their original pixels with colored margins. */
 +extern data16_t *cps2_workram;
 +#define SF_RAM(a)		cps2_workram[((a) - 0xff0000) >> 1]
 +#define SF_P1			0xff844e		/* player objects, non-zero during a fight */
@@ -207,6 +207,9 @@
 +{
 +	ssf2t_requested = enable != 0;
 +}
++
++int ssf2t_is_fighting(void) { return ssf2t_wide; }
++static void ssf2t_layer_clip(int layer, const struct rectangle *cliprect, struct rectangle *clip);
 +
 +static void ssf2t_update_widescreen(void)
 +{
@@ -232,9 +235,29 @@
 +		ssf2t_knum = (INT16)SF_RAM(SF_BACK) - ssf2t_backc;
 +		ssf2t_kden = centre - (lo + hi) / 2;
 +	}
-+	if (wide != ssf2t_wide)
-+		set_visible_area(wide ? 0 : 64, wide ? 511 : 447, Machine->visible_area.min_y, Machine->visible_area.max_y);
-+	ssf2t_wide = wide;
++    ssf2t_wide = wide;
++    {
++        struct rectangle view = {64,447,Machine->visible_area.min_y,Machine->visible_area.max_y};
++        if (wide) {
++            struct rectangle back;
++            view.min_x = 0; view.max_x = 511;
++            ssf2t_layer_clip(2, &view, &view);
++            ssf2t_layer_clip(3, &view, &back);
++            if (back.min_x > view.min_x) view.min_x = back.min_x;
++            if (back.max_x < view.max_x) view.max_x = back.max_x;
++            /* Keep the frame centered on the original playfield. At either
++             * camera limit use the original width: sprites such as Dhalsim's
++             * elephants also end there, independently of the tilemaps. */
++            {
++                int extra = 64 - view.min_x;
++                if (view.max_x - 447 < extra) extra = view.max_x - 447;
++                if (extra < 0) extra = 0;
++                view.min_x = 64 - extra; view.max_x = 447 + extra;
++            }
++        }
++        if (view.min_x != Machine->visible_area.min_x || view.max_x != Machine->visible_area.max_x)
++            set_visible_area(view.min_x,view.max_x,view.min_y,view.max_y);
++    }
 +}
 +
 +/* Columns of the bitmap that a layer's art covers in widescreen: the 4:3 view
@@ -267,29 +290,8 @@
 +
 +static void ssf2t_render_layer(struct mame_bitmap *bitmap, const struct rectangle *cliprect, int layer, int primask)
 +{
-+	struct rectangle clip;
-+	ssf2t_layer_clip(layer, cliprect, &clip);
-+    if (clip.max_x >= clip.min_x) {
-+        int x, y;
-+        cps1_render_layer(bitmap, &clip, layer, primask);
-+        /* Finite stage art cannot supply new columns at the camera limit.
-+         * Reflect its painted edge per layer, before fighters and the HUD,
-+         * including priority so sprites still pass behind foreground art. */
-+        for (y = clip.min_y; y <= clip.max_y; ++y) {
-+            for (x = cliprect->min_x; x < clip.min_x; ++x) {
-+                int src = clip.min_x + clip.min_x - x - 1;
-+                if (src > clip.max_x) src = clip.max_x;
-+                plot_pixel(bitmap,x,y,read_pixel(bitmap,src,y));
-+                plot_pixel(priority_bitmap,x,y,read_pixel(priority_bitmap,src,y));
-+            }
-+            for (x = clip.max_x + 1; x <= cliprect->max_x; ++x) {
-+                int src = clip.max_x - (x - clip.max_x - 1);
-+                if (src < clip.min_x) src = clip.min_x;
-+                plot_pixel(bitmap,x,y,read_pixel(bitmap,src,y));
-+                plot_pixel(priority_bitmap,x,y,read_pixel(priority_bitmap,src,y));
-+            }
-+        }
-+    }
++    /* The common visible window already excludes finite art boundaries. */
++    cps1_render_layer(bitmap, cliprect, layer, primask);
 +}
 +#endif
 +
@@ -303,7 +305,7 @@
  
  
  	flip_screen_set(videocontrol & 0x8000);
-@@ -1888,6 +2008,14 @@
+@@ -1888,6 +2010,14 @@
  	tilemap_set_scrollx(tilemap[2],0,scroll3x);
  	tilemap_set_scrolly(tilemap[2],0,scroll3y);
  
@@ -318,7 +320,7 @@
  
  	/* Blank screen */
  	fillbitmap(bitmap,Machine->pens[4095],cliprect);
-@@ -1960,9 +2088,15 @@
+@@ -1960,9 +2090,15 @@
  			}
  		}
  
