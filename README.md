@@ -13,7 +13,17 @@ An **NBA Showtime: NBA on NBC** frontend is also in the source, but its engine i
 
 **You need your own copy of each game. ROMs and disc images are not included.**
 
-**[Releases](https://github.com/DevZer0D4Y/NativePorts/releases)**
+**[Latest release](https://github.com/DevZer0D4Y/NativePorts/releases/latest)**
+
+[Download all four Windows builds](https://github.com/DevZer0D4Y/NativePorts/releases/download/v0.2.2/NativePorts-Windows-x64.zip)
+
+| Game | iOS IPA |
+|---|---|
+| SSF2T 0.2.2 | [Download](https://github.com/DevZer0D4Y/NativePorts/releases/download/v0.2.2/SSF2T-0.2.2-unsigned.ipa) |
+| Slam n Jam 0.2.2 | [Download](https://github.com/DevZer0D4Y/NativePorts/releases/download/v0.2.2/SlamJam96-0.2.2-unsigned.ipa) |
+| UMK3 0.2.1 | [Download](https://github.com/DevZer0D4Y/NativePorts/releases/download/v0.2.2/UMK3-0.2.1-unsigned.ipa) |
+| THPS2 0.2.1 | [Download](https://github.com/DevZer0D4Y/NativePorts/releases/download/v0.2.2/THPS2-0.2.1-unsigned.ipa) |
+
 
 If you want to support me and remain up-to-date about this and other projects, you can in different ways:
 
@@ -51,7 +61,7 @@ YouTube: https://www.youtube.com/@develop_erZ
 
 ### iPhone and iPad
 
-1. Download the IPA for your game (for example `SSF2T-0.2.0-unsigned.ipa`) from the [latest release](https://github.com/DevZer0D4Y/NativePorts/releases), or [build it from source](#building).
+1. Download the IPA for your game (for example `SSF2T-0.2.2-unsigned.ipa`) from the [latest release](https://github.com/DevZer0D4Y/NativePorts/releases/latest), or [build it from source](#building).
 2. Sign and install it with your sideloading tool. With ESign, import the IPA, then sign and install it inside ESign.
 3. Open the app, tap **IMPORT** (for example **IMPORT ssf2t.zip**) and pick your game file in the Files app. You can also copy it, under the name from the table above, into **Files → On My iPhone → *the app's folder***, then quit and reopen the app.
 
@@ -59,7 +69,7 @@ Each game is a separate app with its own bundle identifier: `com.devz.ssf2t`, `c
 
 ### Windows
 
-1. Download `NativePorts-Windows-x64.zip` from the [latest release](https://github.com/DevZer0D4Y/NativePorts/releases) and extract it. Keep each `.exe` together with its `SDL2.dll`.
+1. Download [NativePorts-Windows-x64.zip](https://github.com/DevZer0D4Y/NativePorts/releases/download/v0.2.2/NativePorts-Windows-x64.zip) from the [latest release](https://github.com/DevZer0D4Y/NativePorts/releases/latest) and extract it. Keep each `.exe` together with its `SDL2.dll`.
 2. Run the game's `.exe`, then click **OPEN ROM ARCHIVE** or **OPEN DISC IMAGE** (or press **O**), or drag your game file into the window.
 3. For the arcade games, press **5** for a credit, then **1** to start. For the console games, press **1** (Start).
 
@@ -69,7 +79,7 @@ If Windows shows "Windows protected your PC", click **More info › Run anyway**
 
 On iOS, tap **❚❚** to pause, or hold the controller's Menu button. The pause menu has the same tabs as NBA Hangtime: **GAME**, **DISPLAY** (WIDESCREEN, CRT filter, COLOR SIDES, screen mode, pixels), **TOUCH** (layout, size, opacity, vibration, **CUSTOMIZE LAYOUT**) and **GAMEPAD** (remap every action).
 
-On Windows, the default keys are the arrow keys, **X C Z A S D** for the six actions, **5** for coin or select and **1** for start. Every key can be remapped in **CONTROLS**.
+On Windows, the default keys are the arrow keys, **X C Z A S D** for the six actions, **5** for arcade coins and **1** for Start. Slam n Jam uses **Tab** for PS1 Select and has no coin input. Every key can be remapped in **CONTROLS**.
 
 | Key | Action |
 |---|---|
@@ -87,9 +97,9 @@ WIDESCREEN (iOS: **DISPLAY** tab; Windows: pause menu or **F8**) is on by defaul
 
 | Game | How it works |
 |---|---|
-| Super Street Fighter II Turbo | During fights the whole 512-pixel row the CPS2 hardware draws is shown, about 16:9, instead of the 384 pixels in the middle. The stages are already there in the tilemaps. Where a stage ends, the edge stays dark instead of showing unused tiles. |
+| Super Street Fighter II Turbo | The fight view expands up to 512 native columns. At finite stage boundaries it narrows to the original 384-column window, excluding unsupported scenery without mirroring. Menus are centered in a 512-column frame with colored sides. |
 | Ultimate Mortal Kombat 3 | During fights the 112 hidden columns of the arcade's 512-pixel rows are shown. The game's display window is widened so the scenery just off screen is drawn, and the floor and repeating backgrounds are extended to the new edges. |
-| Slam 'n Jam '96 | 3D scenes are drawn 3/4 as wide and shown at 16:9, so the court, the crowd and the players keep their proportions and the sides show the rest of the arena. Movies and picture screens stay 4:3. |
+| Slam 'n Jam '96 | Gameplay uses a 426-column native drawing canvas instead of the original 320 columns. Extra submitted court geometry fills the sides while players, text and the centered HUD retain their original scale. Movies stay 4:3. |
 | Tony Hawk's Pro Skater 2 | Flycast's widescreen patch for the game, shown at 16:9. |
 
 In SSF2T and UMK3 the fighters stay within the original screen edges, so the fights play exactly as before, and the HUD stays where it was. Menus keep their 4:3 picture, with COLOR SIDES filling the sides. Turn WIDESCREEN off for the original picture.
@@ -98,10 +108,10 @@ In SSF2T and UMK3 the fighters stay within the original screen edges, so the fig
 
 | Game | Version | Platforms |
 |---|---|---|
-| Super Street Fighter II Turbo | 0.2.0 | iOS, Windows |
-| Ultimate Mortal Kombat 3 | 0.2.0 | iOS, Windows |
-| Slam 'n Jam '96 | 0.2.0 | iOS, Windows |
-| Tony Hawk's Pro Skater 2 | 0.2.0 | iOS, Windows |
+| Super Street Fighter II Turbo | 0.2.2 | iOS, Windows |
+| Ultimate Mortal Kombat 3 | 0.2.1 | iOS, Windows |
+| Slam 'n Jam '96 | 0.2.2 | iOS, Windows |
+| Tony Hawk's Pro Skater 2 | 0.2.1 | iOS, Windows |
 | NBA Showtime | — | Frontend only, engine not finished |
 
 Known limitations:
@@ -131,7 +141,7 @@ Builds use two parallel jobs. Each game is built by its short name: `ssf2t`, `um
 
 ```sh
 python3 scripts/build_ios.py ssf2t     # builds the core, then the app, unsigned
-python3 scripts/package_ipas.py ssf2t  # writes dist/ios/SSF2T-0.2.0-unsigned.ipa
+python3 scripts/package_ipas.py ssf2t  # writes dist/ios/SSF2T-0.2.2-unsigned.ipa
 ```
 
 Leave out the game name in `package_ipas.py` to package all four. Packaging strips the signature and refuses to include game files, signing files or private build paths. To sign during the build instead, pass `--team YOURTEAMID` to `build_ios.py`, or open `ports/<game>/ios/Hangtime.xcodeproj` in Xcode and choose your team in Signing & Capabilities (build the core first with `python3 scripts/build_core.py <game> iphoneos`).
