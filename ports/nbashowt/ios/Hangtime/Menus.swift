@@ -278,19 +278,22 @@ final class PauseMenuView: UIView {
             })
             add(note("CRT FILTER uses the NewPixie shader."))
             add(ActionRow("CONTROLLER TUTORIAL") { [weak self] in self?.onTutorial?() })
-            add(ActionRow("RESTART ARCADE", kind: .destructive) { [weak self] in self?.onRestart?() })
-            add(note("Arcade ver 2.0. Controllers join as players 1, 3, 2 and 4, so the first two play against each other. Game files are supplied separately."))
+            add(ActionRow("RESTART GAME", kind: .destructive) { [weak self] in self?.onRestart?() })
+            add(note("PlayStation. 4 player slots. Game files are supplied separately."))
         case .display:
+            add(ChoiceRow("WIDESCREEN", ["ON", "OFF"], selected: settings.gameWidescreen ? 0 : 1) { [weak self] in
+                self?.settings.gameWidescreen = $0 == 0; changed()
+            })
             add(ChoiceRow("COLOR SIDES", ["ON", "OFF"], selected: settings.colorSides ? 0 : 1) { [weak self] in
                 self?.settings.colorSides = $0 == 0; changed()
             })
-            add(ChoiceRow("SCREEN", ["FULL", "SQUARE", "ARCADE"], selected: settings.screen.rawValue) { [weak self] in
+            add(ChoiceRow("SCREEN", ["FULL", "SQUARE", "ORIGINAL"], selected: settings.screen.rawValue) { [weak self] in
                 self?.settings.screen = GameSettings.Screen(rawValue: $0) ?? .arcade; changed()
             })
             add(ChoiceRow("PIXELS", ["SHARP", "SMOOTH"], selected: settings.smoothPixels ? 1 : 0) { [weak self] in
                 self?.settings.smoothPixels = $0 == 1; changed()
             })
-            add(note("COLOR SIDES fills unused space in gameplay and menus. ARCADE preserves 4:3; FULL stretches to fill the display. Expanded gameplay needs ROM-specific verification."))
+            add(note("WIDESCREEN shows more of the court in 3D play, with nothing stretched; movies and picture screens stay 4:3. COLOR SIDES fills unused space. ORIGINAL keeps the monitor proportions; FULL stretches to fill the display."))
         case .touch:
             add(ChoiceRow("TOUCH CONTROLS", ["AUTO", "ON", "OFF"], selected: settings.touchMode.rawValue) { [weak self] in
                 self?.settings.touchMode = GameSettings.TouchMode(rawValue: $0) ?? .auto; changed()
@@ -385,7 +388,7 @@ final class PauseMenuView: UIView {
         }
         switch tab {
         case .game: hint.text = "TIP: PUSH THE STICK TO THE EDGE TO SPRINT WITH TURBO"
-        case .display: hint.text = "TIP: ARCADE KEEPS THE ORIGINAL PROPORTIONS, FULL FILLS THE SCREEN"
+        case .display: hint.text = "TIP: ORIGINAL KEEPS THE ORIGINAL PROPORTIONS, FULL FILLS THE SCREEN"
         case .touch: hint.text = "TIP: DRAG AND PINCH ANY CONTROL IN CUSTOMIZE LAYOUT"
         case .gamepad: hint.text = "TIP: TAP A ROW, THEN PRESS THE CONTROLLER BUTTON YOU WANT"
         }
@@ -395,44 +398,17 @@ final class PauseMenuView: UIView {
 /// "CONTROLLER TUTORIAL" overlay: spotlights each control with an explanation card.
 final class TutorialView: UIView {
     struct Step { let tab: Int; let spots: [Spot]; let title: String; let touch: String; let pad: String }
-    static let tabs = ["OFFENSE", "DEFENSE", "ARCADE"]
+    static let tabs = ["OFFENSE", "DEFENSE", "SYSTEM"]
     static let steps: [Step] = [
-        Step(tab: 0, spots: [.control(.stick)], title: "MOVE / SPRINT",
-             touch: "Push the Left Stick in any direction to move, push it to the edge to Sprint.",
-             pad: "Move with the Left Stick or D-pad. Hold {turbo} to Sprint with Turbo."),
-        Step(tab: 0, spots: [.control(.shoot)], title: "SHOOT",
-             touch: "Hold SHOOT to jump, release it at the top of the jump to shoot. A quick tap fakes a shot.",
-             pad: "Hold {shoot} to jump, release it at the top of the jump to shoot. A quick tap fakes a shot."),
-        Step(tab: 0, spots: [.control(.turbo), .control(.stick)], title: "TURBO",
-             touch: "Hold TURBO to run faster and jump higher. Sprint to the rim and press SHOOT to dunk.",
-             pad: "Hold {turbo} to run faster and jump higher. Sprint to the rim and press {shoot} to dunk."),
-        Step(tab: 0, spots: [.control(.pass)], title: "PASS",
-             touch: "Tap PASS to pass to your teammate. In the air, PASS dishes the ball off instead of shooting.",
-             pad: "Press {pass} to pass to your teammate. In the air, {pass} dishes the ball off instead of shooting."),
-        Step(tab: 0, spots: [.control(.spin), .control(.turbo)], title: "SPIN MOVE",
-             touch: "With the ball, tap SPIN (or double-tap TURBO) to spin past defenders. The shortcut sends two TURBO presses.",
-             pad: "With the ball, press {spin} (or double-tap {turbo}) to spin past defenders. The shortcut sends two TURBO presses."),
-        Step(tab: 0, spots: [.control(.dunk), .control(.shoot)], title: "ALLEY-OOP",
-             touch: "When your teammate has the ball, hold TURBO and press SHOOT to go up for an alley-oop. The optional DUNK button does both.",
-             pad: "When your teammate has the ball, hold {turbo} and press {shoot} to go up for an alley-oop, or press {dunk}."),
-        Step(tab: 1, spots: [.control(.pass)], title: "STEAL",
-             touch: "On defense PASS becomes STEAL: tap it next to the ball handler to swipe at the ball.",
-             pad: "On defense {pass} becomes STEAL: press it next to the ball handler to swipe at the ball."),
-        Step(tab: 1, spots: [.control(.shoot)], title: "BLOCK / REBOUND",
-             touch: "On defense SHOOT becomes BLOCK: jump to swat shots and grab rebounds.",
-             pad: "On defense {shoot} becomes BLOCK: jump to swat shots and grab rebounds."),
-        Step(tab: 1, spots: [.control(.shove), .control(.turbo)], title: "SHOVE",
-             touch: "Hold TURBO and tap PASS to shove an opponent to the floor. It costs Turbo. The optional SHOVE button does both.",
-             pad: "Hold {turbo} and press {pass} to shove an opponent to the floor, or press {shove}. It costs Turbo."),
-        Step(tab: 2, spots: [.control(.coin)], title: "INSERT COIN",
-             touch: "Tap COIN to add a credit, just like dropping a quarter in the arcade cabinet.",
-             pad: "Press {coin} to add a credit, just like dropping a quarter in the arcade cabinet."),
-        Step(tab: 2, spots: [.control(.start)], title: "START",
-             touch: "Tap START to join the game, then follow the screen to pick your team.",
-             pad: "Tap {start} to join the game, then follow the screen to pick your team."),
-        Step(tab: 2, spots: [.pause], title: "PAUSE & SETTINGS",
-             touch: "Tap ❚❚ to pause, change the screen mode, set up a gamepad or customize this layout.",
-             pad: "Hold {start} or press Home to pause, change the screen mode or remap your buttons.")
+        Step(tab: 0, spots: [.control(.stick)], title: "MOVE", touch: "Use the floating stick to move; push it to the edge for TURBO.", pad: "Use the D-pad or left stick to move."),
+        Step(tab: 0, spots: [.control(.shoot)], title: "SHOOT / BLOCK", touch: "Press SHOOT / BLOCK on the touch controls.", pad: "Press {shoot} for SHOOT / BLOCK."),
+        Step(tab: 0, spots: [.control(.pass)], title: "PASS / STEAL", touch: "Press PASS / STEAL on the touch controls.", pad: "Press {pass} for PASS / STEAL."),
+        Step(tab: 0, spots: [.control(.turbo)], title: "TURBO", touch: "Press TURBO on the touch controls.", pad: "Press {turbo} for TURBO."),
+        Step(tab: 1, spots: [.control(.spin)], title: "SPIN", touch: "Press SPIN on the touch controls.", pad: "Press {spin} for SPIN."),
+        Step(tab: 0, spots: [.control(.dunk)], title: "DUNK", touch: "Press DUNK on the touch controls.", pad: "Press {dunk} for DUNK."),
+        Step(tab: 0, spots: [.control(.shove)], title: "SHOVE", touch: "Press SHOVE on the touch controls.", pad: "Press {shove} for SHOVE."),
+        Step(tab: 2, spots: [.control(.start)], title: "START", touch: "Tap START to join.", pad: "Tap {start} to join."),
+        Step(tab: 2, spots: [.control(.start)], title: "PAUSE", touch: "Tap the pause button for settings.", pad: "Hold Menu or press Home to pause.")
     ]
 
     var spotFrame: ((Spot) -> CGRect?)?
@@ -539,7 +515,7 @@ final class TutorialView: UIView {
 
     /// Widest free horizontal gap between the touch controls: bottom band first, then the middle, then the top.
     private func placeCard(maxWidth: CGFloat, height: CGFloat, avoiding hole: CGRect?, u: CGFloat) -> CGRect {
-        let obstacles = ControlID.allCases.compactMap { spotFrame?(.control($0)) } + [hole].compactMap { $0 }
+        let obstacles = ControlID.available.compactMap { spotFrame?(.control($0)) } + [hole].compactMap { $0 }
         let margin = max(safeAreaInsets.left, safeAreaInsets.right, 16)
         let bands = [bounds.height - max(safeAreaInsets.bottom, 10) - height - 6 * u, bounds.midY - height / 2 + 12 * u, tabStack.frame.maxY + 10 * u]
         for y in bands {
@@ -662,7 +638,7 @@ final class LayoutEditorView: UIView {
     }
 
     private func refresh() {
-        let editable = ControlID.allCases
+        let editable = ControlID.available
         let outlinePath = UIBezierPath()
         for id in editable where id != selected { outlinePath.append(shape(controls.frame(of: id), id)) }
         CATransaction.begin(); CATransaction.setDisableActions(true)
@@ -728,7 +704,7 @@ final class LayoutEditorView: UIView {
     }
 
     private func control(at point: CGPoint) -> ControlID? {
-        let hits = ControlID.allCases.filter { controls.frame(of: $0).insetBy(dx: -8, dy: -8).contains(point) }
+        let hits = ControlID.available.filter { controls.frame(of: $0).insetBy(dx: -8, dy: -8).contains(point) }
         return hits.min { a, b in
             let fa = controls.frame(of: a), fb = controls.frame(of: b)
             return hypot(fa.midX - point.x, fa.midY - point.y) < hypot(fb.midX - point.x, fb.midY - point.y)
@@ -807,14 +783,14 @@ final class StartScreenView: UIView {
         gradient.type = .radial; gradient.startPoint = CGPoint(x: 0.5, y: 0.3); gradient.endPoint = CGPoint(x: 1.2, y: 1.3)
         let title = UILabel(); title.text = "NBA Showtime - NBA on NBC"; title.font = Style.display(48); title.adjustsFontSizeToFitWidth = true; title.minimumScaleFactor = 0.35; title.textColor = .white
         title.layer.shadowColor = Style.goldDeep.cgColor; title.layer.shadowOpacity = 0.9; title.layer.shadowRadius = 0; title.layer.shadowOffset = CGSize(width: 3, height: 3)
-        let edition = UILabel(); edition.text = "Arcade ver 2.0"; edition.font = Style.font(16, .black); edition.textColor = Style.gold
+        let edition = UILabel(); edition.text = "PlayStation"; edition.font = Style.font(16, .black); edition.textColor = Style.gold
         let detail = UILabel(); detail.numberOfLines = 0; detail.textAlignment = .center
-        detail.text = "Import nbashowt.zip and nbashowt.chd. Both files are required. You can select both together or import them separately."
+        detail.text = "Import the game disc image (nbashowt.bin) to play. You can also copy it into this app's Documents folder with Finder or the Files app."
         detail.font = .systemFont(ofSize: 14, weight: .medium); detail.textColor = UIColor.white.withAlphaComponent(0.75)
         var config = UIButton.Configuration.filled()
         config.baseBackgroundColor = Style.gold; config.baseForegroundColor = Style.ink
         config.image = UIImage(systemName: "square.and.arrow.down.fill"); config.imagePadding = 8
-        config.attributedTitle = AttributedString("IMPORT ZIP + CHD", attributes: AttributeContainer([.font: Style.font(19)]))
+        config.attributedTitle = AttributedString("IMPORT nbashowt.bin", attributes: AttributeContainer([.font: Style.font(19)]))
         config.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 26, bottom: 12, trailing: 26)
         config.cornerStyle = .capsule
         let button = UIButton(configuration: config)

@@ -16,9 +16,15 @@ if win:
   cmd+=[str(resource)]
 else:cmd+=subprocess.check_output(['sdl2-config','--cflags'],text=True).split()
 cmd+=[str(port/'desktop/main.c'),str(port/'desktop/CRTSDL.c'),str(common/'HangtimeCore.c'),str(common/'ROMAudit.c'),str(r/'.build'/game/platform/'libcore.a')]
-if game=='thps2':cmd+=[str(port/'desktop/CoreGraphics.c'),'-lc++','-liphlpapi']
+if game=='thps2':
+ cmd+=[str(port/'desktop/CoreGraphics.c'),'-lc++']
+ if win:cmd+=['-liphlpapi']
 if win:cmd+=['-mwindows','-lSDL2','-lopengl32','-lcomdlg32','-lws2_32','-lole32','-lshell32','-luuid','-lm','-o',str(out/(game+'.exe'))]
 else:cmd+=subprocess.check_output(['sdl2-config','--libs'],text=True).split()+['-framework','OpenGL','-lz','-o',str(out/game)]
 subprocess.run([cc]+cmd,check=True)
-if win:shutil.copy2(s/'bin/SDL2.dll',out/'SDL2.dll')
+if win:
+ shutil.copy2(s/'bin/SDL2.dll',out/'SDL2.dll')
+ if game=='thps2':
+  for name in ['libc++.dll','libunwind.dll']:
+   shutil.copy2(t/'x86_64-w64-mingw32/bin'/name,out/name)
 print(out)

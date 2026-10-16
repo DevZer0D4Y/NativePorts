@@ -18,6 +18,7 @@ static void audio_unlock(void) { pthread_mutex_unlock(&audio_mutex); }
 extern int sf_save_nvram(void);
 extern void ssf2t_set_widescreen(int enable);
 extern int ssf2t_is_fighting(void);
+extern void ssf2t_scene_bounds(int *left, int *right);
 static bool widescreen_requested = true;
 
 static bool loaded, initialized, ran_frame;
@@ -86,6 +87,9 @@ static void video(const void *data, unsigned w, unsigned h, size_t pitch) {
     if (!data || w > 2048 || h > 1024) return;
     unsigned pad = widescreen_requested && !ssf2t_is_fighting() && w == 384 ? 64 : 0;
     width = w + pad * 2; height = h;
+    int scene_left = 0, scene_right = (int)w-1;
+    if (widescreen_requested && ssf2t_is_fighting() && w == 512)
+        ssf2t_scene_bounds(&scene_left, &scene_right);
     if (pad) for (unsigned i = 0; i < width * h; ++i) {
         pixels[i*4] = 12; pixels[i*4+1] = 22; pixels[i*4+2] = 43; pixels[i*4+3] = 255;
     }
@@ -103,6 +107,7 @@ static void video(const void *data, unsigned w, unsigned h, size_t pitch) {
                 unsigned b = value & 31;
                 p[0] = r * 255 / 31; p[1] = g * 255 / (pixel_format == RETRO_PIXEL_FORMAT_RGB565 ? 63 : 31); p[2] = b * 255 / 31;
             }
+            if ((int)x < scene_left || (int)x > scene_right) { p[0]=12; p[1]=22; p[2]=43; }
             p[3] = 255;
         }
     }

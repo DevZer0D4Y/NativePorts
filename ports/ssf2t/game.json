@@ -43,6 +43,6 @@
       "Verify live toggle and original view restoration",
       "Verify with supported game image on iOS and Windows"
     ],
-    "implementation": "Expanded gameplay view reduces symmetrically to the original 384-column window at finite stage limits, without reflected art. Menus retain original pixels centered in a 512-column frame with colored sides."
+    "implementation": "Fixed 512-column presentation in widescreen, with finite scene clipping inside the canvas. Fighter and HUD scale stays constant at camera limits; unsupported scenery uses colored margins. Menus are centered with colored sides."
   }
 }

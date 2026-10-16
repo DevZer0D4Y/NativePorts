@@ -33,14 +33,15 @@ int main(void) {
  for(int x=200;x<=400;x++) {
   SF_RAM(SF_CENTRE)=x;SF_RAM(SF_BACK)=100+(x-300)/2;
   ssf2t_update_widescreen();
-  assert(Machine->visible_area.min_x>=0 && Machine->visible_area.min_x<=64);
-  assert(Machine->visible_area.max_x<=511 && Machine->visible_area.max_x>=447);
-  assert(64-Machine->visible_area.min_x==Machine->visible_area.max_x-447);
-  if(x==200 || x==400) assert(Machine->visible_area.min_x==64 && Machine->visible_area.max_x==447);
+  assert(Machine->visible_area.min_x==0 && Machine->visible_area.max_x==511);
+  int l,r; ssf2t_scene_bounds(&l,&r);
+  assert(l>=0 && l<=64 && r>=447 && r<=511);
+  assert(64-l==r-447);
+  if(x==200 || x==400) assert(l==64 && r==447);
  }
  ssf2t_set_widescreen(0);ssf2t_update_widescreen();
  assert(Machine->visible_area.min_x==64 && Machine->visible_area.max_x==447);
- puts("PASS: finite camera edges restore original width, no mirroring, HUD retained, toggle restores 4:3.");
+ puts("PASS: fixed 512-column output across 201 camera positions; finite scenery clipped without zoom; toggle restores 4:3.");
 }
 '''
 p=b/'sf.c';p.write_text(fixture+body+main)

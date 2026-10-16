@@ -3,7 +3,7 @@
 from pathlib import Path
 import zipfile,plistlib,stat,hashlib,json,re,sys
 root=Path(__file__).resolve().parents[1];out=root/'dist/ios';out.mkdir(parents=True,exist_ok=True);rows=[]
-games=sys.argv[1:] or ['ssf2t','umk3','slamjam96','thps2']
+games=sys.argv[1:] or ['ssf2t','umk3','slamjam96','thps2','nbashowt']
 # Game files and signing material never go into a package.
 BLOCKED=re.compile(r'\.(zip|chd|cue|bin|iso|gdi|cdi|7z|mobileprovision|p12|cer)$',re.I)
 PRIVATE=re.compile(rb'/Users/(?!runner/)[^/\0]+/|/home/[^/\0]+/|[A-Z]:\\Users\\')

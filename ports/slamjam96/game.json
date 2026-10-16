@@ -43,7 +43,7 @@
       "Verify live toggle and original view restoration",
       "Verify with supported game image on iOS and Windows"
     ],
-    "implementation": "426-column native drawing canvas, isolated from guest texture VRAM, renders the software-projected guard-band geometry at original pixel scale. HUD stays in the central 320 columns; movies remain 4:3."
+    "implementation": "426-column native canvas with isolated guest texture VRAM. SLES-00076 MIPS scenery clipping is widened for crowd/court display lists. Native interior and HUD remain unchanged; original 4:3 toggle and movies preserved."
   },
   "ui_reference": "NBA Hangtime 0.4.2",
   "controller_defaults": {

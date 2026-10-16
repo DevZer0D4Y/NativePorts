@@ -1,9 +1,9 @@
 import GameController
 import QuartzCore
 
-/// Showtime's MAME layout: Button 1 = Shoot, 2 = Pass, 3 = Turbo.
+/// PlayStation layout: Square = Shoot, Cross = Pass, R2 = Turbo.
 enum Pad {
-    static let shoot: UInt16 = 1, pass: UInt16 = 256, turbo: UInt16 = 2
+    static let shoot: UInt16 = 2, pass: UInt16 = 1, turbo: UInt16 = 8192
     static let coin: UInt16 = 4, start: UInt16 = 8
     static let up: UInt16 = 16, down: UInt16 = 32, left: UInt16 = 64, right: UInt16 = 128
 }
@@ -20,7 +20,7 @@ enum Action: String, CaseIterable, Codable {
         case .spin: return "SPIN"
         case .dunk: return "DUNK"
         case .shove: return "SHOVE"
-        case .coin: return "COIN"
+        case .coin: return "SELECT"
         case .start: return "START"
         }
     }

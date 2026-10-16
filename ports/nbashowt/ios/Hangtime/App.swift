@@ -36,6 +36,7 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
     private let controls = ControlsView()
     private let startScreen = StartScreenView()
     private let toast = ToastView()
+    private let crtButton = UIButton(type: .system)
     private let gamepads = GamepadHub()
     private var sequencers = [ActionSequencer](repeating: ActionSequencer(), count: 4)
     private var pauseMenu: PauseMenuView?
@@ -71,12 +72,18 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
             interaction.handledEventTypes = .gamepad
             view.addInteraction(interaction)
         }
-        view.backgroundColor = UIColor(red: 0.04, green: 0.07, blue: 0.15, alpha: 1)
+        view.backgroundColor = .black
         view.addSubview(screen)
         view.addSubview(startScreen)
         controls.isHidden = true
         view.addSubview(controls)
         view.addSubview(toast)
+        var style = UIButton.Configuration.filled()
+        style.baseBackgroundColor = UIColor.black.withAlphaComponent(0.75)
+        style.baseForegroundColor = .white; style.cornerStyle = .capsule
+        crtButton.configuration = style; crtButton.accessibilityLabel = "CRT filter"
+        crtButton.addTarget(self, action: #selector(toggleCRT), for: .touchUpInside)
+        crtButton.isHidden = true; view.addSubview(crtButton)
         startScreen.onImport = { [weak self] in self?.importROM() }
         controls.onPause = { [weak self] in self?.openPauseMenu() }
         controls.onActionPressed = { [weak self] action in self?.sequencers[0].trigger(action) }
@@ -93,13 +100,15 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
         // Ticks run even before a game starts so gamepads can drive the menus.
         let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
         link.add(to: .main, forMode: .common); displayLink = link
-        let existing = documents.appendingPathComponent("nbashowt.zip")
+        let existing = documents.appendingPathComponent("nbashowt.bin")
         if FileManager.default.fileExists(atPath: existing.path) { start(existing) }
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let bounds = view.bounds
+        let safe = view.safeAreaInsets
+        crtButton.frame = CGRect(x: bounds.width-safe.right-108,y: safe.top+12,width:96,height:44)
         for overlay in [startScreen, controls, pauseMenu, tutorial, editor] as [UIView?] { overlay?.frame = bounds }
         layoutScreen()
     }
@@ -114,7 +123,10 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
 
     private func applySettings() {
         screen.colorSides = settings.colorSides
+        ht_set_widescreen(settings.gameWidescreen)
         screen.crt = settings.crtMode == 1
+        crtButton.setTitle(screen.crt ? "CRT ON" : "CRT OFF",for: .normal)
+        crtButton.accessibilityValue = screen.crt ? "On" : "Off"
         let filter: CALayerContentsFilter = settings.smoothPixels ? .linear : .nearest
         screen.layer.magnificationFilter = filter; screen.layer.minificationFilter = filter
         screen.smooth = settings.smoothPixels
@@ -160,28 +172,21 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
     }
 
     @objc private func importROM() {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.zip, .data], asCopy: true)
-        picker.allowsMultipleSelection = true
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.data], asCopy: true)
         picker.delegate = self; present(picker, animated: true)
     }
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let selected = urls.first else { return }
+        var report = [CChar](repeating: 0, count: 8192)
+        guard ht_validate_rom(selected.path, &report, report.count) else { showError(String(cString: report)); return }
         do {
-            for selected in urls {
-                let ext = selected.pathExtension.lowercased()
-                guard ext == "zip" || ext == "chd" else { throw NSError(domain:"Import", code:1, userInfo:[NSLocalizedDescriptionKey:"Choose nbashowt.zip and nbashowt.chd."]) }
-                let folder = ext == "chd" ? documents.appendingPathComponent("nbashowt") : documents
-                try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
-                let target = folder.appendingPathComponent("nbashowt." + ext)
-                let staging = folder.appendingPathComponent("import." + ext)
-                if FileManager.default.fileExists(atPath:staging.path) { try FileManager.default.removeItem(at:staging) }
-                try FileManager.default.copyItem(at:selected,to:staging)
-                if FileManager.default.fileExists(atPath:target.path) { _ = try FileManager.default.replaceItemAt(target,withItemAt:staging) }
-                else { try FileManager.default.moveItem(at:staging,to:target) }
-            }
-            let rom = documents.appendingPathComponent("nbashowt.zip")
-            let disk = documents.appendingPathComponent("nbashowt/nbashowt.chd")
-            if FileManager.default.fileExists(atPath:rom.path) && FileManager.default.fileExists(atPath:disk.path) { start(rom) }
-            else { toast.show("IMPORT BOTH NBASHOWT.ZIP AND NBASHOWT.CHD",duration:5) }
+            let target = documents.appendingPathComponent("nbashowt.bin")
+            let staging = documents.appendingPathComponent("import.bin")
+            if FileManager.default.fileExists(atPath: staging.path) { try FileManager.default.removeItem(at: staging) }
+            try FileManager.default.copyItem(at: selected, to: staging)
+            if FileManager.default.fileExists(atPath: target.path) { _ = try FileManager.default.replaceItemAt(target, withItemAt: staging) }
+            else { try FileManager.default.moveItem(at: staging, to: target) }
+            start(target)
         } catch { showError(error.localizedDescription) }
     }
 
@@ -189,6 +194,7 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
         guard !playing else { return }
         guard ht_start(url.path, documents.path) else { showError(String(cString: ht_error())); return }
         playing = true
+        crtButton.isHidden = false
         startScreen.isHidden = true; controls.isHidden = false
         view.setNeedsLayout()
         do {
@@ -208,8 +214,14 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
         if !settings.tutorialSeen {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.showTutorial(fromMenu: false) }
         } else {
-            toast.show(controls.touchControlsHidden ? "PRESS \(gamepads.primaryLabel(for: .coin)), THEN \(gamepads.label(for: .start)) TO PLAY" : "TAP COIN, THEN START TO PLAY", duration: 4)
+            toast.show(controls.touchControlsHidden ? "PRESS START TO PLAY" : "TAP START TO PLAY", duration: 4)
         }
+    }
+
+    @objc private func toggleCRT() {
+        settings.crtMode = settings.crtMode == 1 ? 0 : 1
+        applySettings()
+        toast.show(settings.crtMode == 1 ? "CRT FILTER ON" : "CRT FILTER OFF")
     }
 
     @objc private func tick(_ link: CADisplayLink) {
@@ -334,7 +346,7 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
             self.tutorial = nil; self.settings.tutorialSeen = true
             self.gamepads.suppressHeldButtons()
             if fromMenu || self.paused { self.openPauseMenu() }
-            else { self.toast.show(self.controls.touchControlsHidden ? "PRESS \(self.gamepads.primaryLabel(for: .coin)), THEN \(self.gamepads.label(for: .start)) TO PLAY" : "TAP COIN, THEN START TO PLAY", duration: 4) }
+            else { self.toast.show(self.controls.touchControlsHidden ? "PRESS START TO PLAY" : "TAP START TO PLAY", duration: 4) }
         }
         guide.frame = view.bounds; guide.alpha = 0
         view.insertSubview(guide, belowSubview: toast)

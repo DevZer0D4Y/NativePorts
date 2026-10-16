@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse,os,subprocess,shutil,hashlib,json,filecmp,sys
+import argparse,os,subprocess,shutil,hashlib,json,filecmp,sys,platform
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('game');p.add_argument('platform');p.add_argument('--toolchain',type=Path);a=p.parse_args()
 r=Path(__file__).resolve().parents[1]
@@ -34,7 +34,7 @@ if a.game in ['ssf2t','umk3']:
  drv='drv_'+a.game
  cmd=['make','-j2','platform='+('win' if win else 'osx'),'INCLUDE_DRV='+drv,'STATIC_LINKING=1','TARGET='+str(lib),'CC='+cc,'AR='+ar,'PLATCFLAGS=-D'+drv+' -DSPLIT_CORE -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-error=incompatible-pointer-types']
  if win:cmd+=['system_platform=win','SPLIT_UP_LINK=0']
-elif a.game=='slamjam96':
+elif a.game in ['slamjam96','nbashowt']:
  src=fetch('pcsx')
  sync(src)
  cmd=['make','-f','Makefile.libretro','-j2','platform='+('win' if win else 'ios-arm64' if ios else 'osx'),'STATIC_LINKING=1','TARGET='+str(lib),'CC='+cc,'CXX='+cxx,'AR='+ar,'DYNAREC=0','HAVE_PHYSICAL_CDROM=0','USE_ASYNC_CDROM=0','USE_ASYNC_GPU=0','USE_ASYNC_SPU=0','NDRC_THREAD=0']
@@ -52,6 +52,7 @@ elif a.game=='thps2':
    shutil.copy2(source,target)
  cmd=['make','-j2','platform='+('win' if win else 'osx'),'STATIC_LINKING=1','TARGET='+str(lib),'CC='+cc,'CXX='+cxx,'AR='+ar,'WITH_DYNAREC='+('x86_64' if win else '0'),'NO_REC='+('0' if win else '1'),'HAVE_GENERIC_JIT=0','HAVE_GL2=1','HAVE_GL3=0','HAVE_VULKAN=0','HAVE_OPENMP=0','HAVE_TEXUPSCALE=0','CPUFLAGS=','MFLAGS=','SINGLE_PREC_FLAGS=0']
  if win:cmd+=['HOST_CPU_FLAGS=-DHOST_CPU=CPU_X64']
+ if not win and not ios and platform.machine() == 'arm64':cmd+=['HOST_CPU_FLAGS=-DHOST_CPU=CPU_ARM64 -DTARGET_NO_JIT -DTARGET_NO_EXCEPTIONS']
  if ios:cmd+=['FORCE_GLES=1','HOST_CPU_FLAGS=-DIOS -DHOST_CPU=CPU_ARM64 -DTARGET_NO_JIT -DTARGET_NO_EXCEPTIONS']
 else:raise SystemExit('Engine integration in progress for '+a.game)
 stamp = b / 'build-configuration.sha256'

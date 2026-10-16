@@ -72,7 +72,7 @@ static bool environment(unsigned command, void *data) {
     switch (command) {
     case RETRO_ENVIRONMENT_SET_HW_RENDER:return hw_prepare(data);
     case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER: *(unsigned *)data =
-#ifdef _WIN32
+#if defined(_WIN32) || !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
  RETRO_HW_CONTEXT_OPENGL;
 #else
  RETRO_HW_CONTEXT_OPENGLES2;
@@ -186,7 +186,7 @@ bool ht_start(const char *path, const char *save_directory) {
     snprintf(diagnostic_path, sizeof diagnostic_path, "%s/thps2-boot.log", directory);
     FILE *diagnostic = fopen(diagnostic_path, "w");
     if (diagnostic) {
-        fprintf(diagnostic, "THPS2 native boot diagnostics, build 0.1.9\n");
+        fprintf(diagnostic, "THPS2 native boot diagnostics, build 0.3.0\n");
         fclose(diagnostic);
     }
     ran_frame = false; width = height = 0; pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;

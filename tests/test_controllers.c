@@ -8,10 +8,6 @@ void ht_run_frame(bool present);
 #define main native_frontend_main
 #include PORT_MAIN
 #undef main
-#ifdef PORT_THPS2
-/* This input test links the small arcade bridge; it never runs a game. */
-void ht_run_frame(bool present) { ht_run(); }
-#endif
 #include <assert.h>
 int main(void){
  SDL_SetHint(SDL_HINT_VIDEODRIVER,"dummy");SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,"1");

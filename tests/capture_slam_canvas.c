@@ -38,10 +38,16 @@ int main(int argc,char **argv) {
     for(int i=0;i<30;i++) ht_run();
     capture(argv[2],"widescreen");
     assert(ht_width()==426 && ht_height()==height);
+    /* New scenery can cover the few native border pixels previously culled
+     * along with it. The interior, including the score card, stays exact. */
     for(unsigned y=0;y<height;y++)
-      assert(!memcmp(original+y*320*4,ht_pixels()+(y*426+53)*4,320*4));
-    printf("PASS: expanded native court; all %u central pixels match original, including HUD and sprites.\n",320*height);
+      assert(!memcmp(original+(y*320+8)*4,ht_pixels()+(y*426+53+8)*4,304*4));
+    puts("PASS: 426-column canvas; native interior and HUD exact; toggle restores 4:3.");
     ht_set_widescreen(false); for(int i=0;i<30;i++)ht_run();assert(ht_width()==320);
     free(original);
-    ht_stop();
+    ht_set_widescreen(true);
+    for(int i=0;i<800;i++)ht_run();capture(argv[2],"gameplay");
+    ht_set_buttons(0,64);for(int i=0;i<120;i++)ht_run();capture(argv[2],"pan-left");
+    ht_set_buttons(0,128);for(int i=0;i<240;i++)ht_run();capture(argv[2],"pan-right");
+    ht_set_buttons(0,0);ht_stop();
 }

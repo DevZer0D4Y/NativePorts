@@ -172,7 +172,7 @@
     }
 --- a/src/vidhrdw/cps1_vidhrdw.c
 +++ b/src/vidhrdw/cps1_vidhrdw.c
-@@ -1840,10 +1840,132 @@
+@@ -1840,10 +1840,139 @@
  
  ***************************************************************************/
  
@@ -188,8 +188,9 @@
 +   scenery around the 4:3 view and the fighters stay inside it. The camera centre
 +   moves between the stage limits, so the scenery of the main layer (scroll 2)
 +   ends 192 pixels beyond them; a parallax layer (scroll 3) scrolls in proportion
-+   to the camera and covers less. The visible window is reduced at finite stage edges, so unsupported columns
-+   never enter the frame. Menus use their original pixels with colored margins. */
++   to the camera and covers less. Clip unsupported scenery inside a fixed-width
++   canvas. Changing the visible area with the camera rescaled the entire picture
++   every frame, including the fighters and HUD. */
 +extern data16_t *cps2_workram;
 +#define SF_RAM(a)		cps2_workram[((a) - 0xff0000) >> 1]
 +#define SF_P1			0xff844e		/* player objects, non-zero during a fight */
@@ -202,6 +203,8 @@
 +
 +static int ssf2t_requested = 1, ssf2t_wide;
 +static int ssf2t_backc, ssf2t_learned, ssf2t_knum, ssf2t_kden;
++static struct rectangle ssf2t_scene = {64,447,0,223};
++void ssf2t_scene_bounds(int *left, int *right) { *left=ssf2t_scene.min_x; *right=ssf2t_scene.max_x; }
 +
 +void ssf2t_set_widescreen(int enable)
 +{
@@ -255,6 +258,10 @@
 +                view.min_x = 64 - extra; view.max_x = 447 + extra;
 +            }
 +        }
++        ssf2t_scene = view;
++        /* Only the user's toggle may change output geometry. Finite stage
++         * boundaries change the scene clip, never the pixel scale. */
++        view.min_x = wide ? 0 : 64; view.max_x = wide ? 511 : 447;
 +        if (view.min_x != Machine->visible_area.min_x || view.max_x != Machine->visible_area.max_x)
 +            set_visible_area(view.min_x,view.max_x,view.min_y,view.max_y);
 +    }
@@ -290,7 +297,7 @@
 +
 +static void ssf2t_render_layer(struct mame_bitmap *bitmap, const struct rectangle *cliprect, int layer, int primask)
 +{
-+    /* The common visible window already excludes finite art boundaries. */
++    /* The common scene clip excludes finite art boundaries. */
 +    cps1_render_layer(bitmap, cliprect, layer, primask);
 +}
 +#endif
@@ -305,7 +312,7 @@
  
  
  	flip_screen_set(videocontrol & 0x8000);
-@@ -1888,6 +2010,14 @@
+@@ -1888,6 +2017,14 @@
  	tilemap_set_scrollx(tilemap[2],0,scroll3x);
  	tilemap_set_scrolly(tilemap[2],0,scroll3y);
  
@@ -313,14 +320,14 @@
 +#ifdef drv_ssf2t
 +	ssf2t_update_widescreen();
 +	wide_rect = *cliprect;
-+	wide_rect.min_x = Machine->visible_area.min_x;
-+	wide_rect.max_x = Machine->visible_area.max_x;
++	wide_rect.min_x = ssf2t_scene.min_x;
++	wide_rect.max_x = ssf2t_scene.max_x;
 +	cliprect = &wide_rect;
 +#endif
  
  	/* Blank screen */
  	fillbitmap(bitmap,Machine->pens[4095],cliprect);
-@@ -1960,9 +2090,15 @@
+@@ -1960,9 +2097,15 @@
  			}
  		}
  
@@ -338,7 +345,38 @@
  
 --- a/src/vidhrdw/midtunit_vidhrdw.c
 +++ b/src/vidhrdw/midtunit_vidhrdw.c
-@@ -690,6 +690,186 @@
+@@ -240,9 +240,29 @@
+ }
+ 
+ 
++#ifdef drv_umk3
++extern int umk3_widescreen_active(void);
++#endif
+ void midtunit_from_shiftreg(UINT32 address, UINT16 *shiftreg)
+ {
+-	memcpy(&local_videoram[address >> 3], shiftreg, 2 * 512 * sizeof(UINT16));
++    memcpy(&local_videoram[address >> 3], shiftreg, 2 * 512 * sizeof(UINT16));
++#ifdef drv_umk3
++    /* The game's CPU clears the sky/gradient using a two-row shift-register
++     * template. This bypasses the DMA tile renderer entirely. Extend only
++     * genuinely solid native rows, before the scenery and fighters are drawn. */
++    if (umk3_widescreen_active()) {
++        int row, x;
++        for (row=0;row<2;row++) {
++            const UINT16 *src=shiftreg+row*512;
++            UINT16 *dst=local_videoram+(address>>3)+row*512;
++            for(x=57;x<456 && src[x]==src[56];x++) {}
++            if(x==456) {
++                for(x=0;x<56;x++) dst[x]=src[56];
++                for(x=456;x<512;x++) dst[x]=src[56];
++            }
++        }
++    }
++#endif
+ }
+ 
+ 
+@@ -690,6 +710,186 @@
  /* workaround so comic book offer in mk is correct, without breaking text in mk2 */
  static int mk_delay = 0;
  
@@ -525,7 +563,7 @@
  WRITE16_HANDLER( midtunit_dma_w )
  {
  	static const UINT8 register_map[2][16] =
-@@ -786,6 +966,17 @@
+@@ -786,6 +986,17 @@
  		goto skipdma;
  	}
  
@@ -543,7 +581,7 @@
  	/* there seems to be two types of behavior for the DMA chip */
  	/* for MK1 and MK2, the upper byte of the LRSKIP is the     */
  	/* starting skip value, and the lower byte is the ending    */
-@@ -803,22 +994,15 @@
+@@ -803,22 +1014,15 @@
  	}
  
  	/* then draw */
@@ -571,7 +609,7 @@
  		if (dma_state.xstep && dma_state.ystep)
  			pixels = ((dma_state.width << 8) / dma_state.xstep) * ((dma_state.height << 8) / dma_state.ystep);
  		else
-@@ -884,9 +1068,18 @@
+@@ -884,9 +1088,18 @@
  	/* determine how many pixels to copy */
  	xoffs = cliprect->min_x;
  	width = cliprect->max_x - xoffs + 1;
@@ -590,7 +628,7 @@
  	offset += 512 * cliprect->min_y;
  	offset &= 0x3ffff;
  
-@@ -902,4 +1095,8 @@
+@@ -902,4 +1115,8 @@
  
        offset = (offset + 512) & 0x3ffff;
     }

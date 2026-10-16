@@ -29,6 +29,113 @@
  }
  
  /* Returns the number of program segments in this elf file. */
+--- a/core/hw/aica/aica.h
++++ b/core/hw/aica/aica.h
+@@ -326,13 +326,13 @@
+ 		{
+ #ifdef MSB_FIRST
+ 			u32 pad:16;
+-			u32 nil:5;
++			u32 reserved_nil:5;
+ 			u32 md:3;
+ 			u32 count:8;
+ #else
+ 			u32 count:8;
+ 			u32 md:3;
+-			u32 nil:5;
++			u32 reserved_nil:5;
+ 			u32 pad:16;
+ #endif
+ 		};
+--- a/core/hw/gdrom/gdromv3.cpp
++++ b/core/hw/gdrom/gdromv3.cpp
+@@ -62,7 +62,7 @@
+ 	GD_StatusT GDStatus;
+ 
+ 	
+-ByteCount_t ByteCount ;
++ByteCount_t GdromByteCount ;
+ //end
+ GD_HardwareInfo_t GD_HardwareInfo;
+ 
+@@ -190,7 +190,7 @@
+ 		case gds_pio_send_data:
+ 			//  When preparations are complete, the following steps are carried out at the device.
+ 			//(1)   Number of bytes to be read is set in "Byte Count" register. 
+-			ByteCount.full =(u16)(pio_buff.size<<1);
++			GdromByteCount.full =(u16)(pio_buff.size<<1);
+ 			//(2)   IO bit is set and CoD bit is cleared. 
+ 			IntReason.IO=1;
+ 			IntReason.CoD=0;
+@@ -519,8 +519,8 @@
+ 			SecNumber.Status = GD_PAUSE;
+ 			IntReason.full = 1;
+ 			// DC Checker expects these values
+-			ByteCount.low = 0x14;
+-			ByteCount.hi = 0xEB;
++			GdromByteCount.low = 0x14;
++			GdromByteCount.hi = 0xEB;
+ 		}
+ 		break;
+ 
+@@ -570,8 +570,8 @@
+ 
+ 		SecCount.full = 1;
+ 		SecNumber.full = 1;
+-		ByteCount.low = 0x14;
+-		ByteCount.hi = 0xeb;
++		GdromByteCount.low = 0x14;
++		GdromByteCount.hi = 0xeb;
+ 
+ 		// ABORT command
+ 		Error.full = 0x4;
+@@ -1135,11 +1135,11 @@
+ 
+ 	case GD_BYCTLLO	:
+ 		printf_rm("GDROM: Read From GD_BYCTLLO");
+-		return ByteCount.low;
++		return GdromByteCount.low;
+ 
+ 	case GD_BYCTLHI	:
+ 		printf_rm("GDROM: Read From GD_BYCTLHI");
+-		return ByteCount.hi;
++		return GdromByteCount.hi;
+ 
+ 	case GD_DATA:
+ 		if(2!=sz)
+@@ -1155,7 +1155,7 @@
+ 			{
+ 				u32 rv= pio_buff.data[pio_buff.index];
+ 				pio_buff.index+=1;
+-				ByteCount.full-=2;
++				GdromByteCount.full-=2;
+ 
+             //end of pio transfer !
+ 				if (pio_buff.index==pio_buff.size)
+@@ -1199,12 +1199,12 @@
+ 	{
+ 	case GD_BYCTLLO:
+ 		printf_rm("GDROM: Write to GD_BYCTLLO = %X, Size:%X",data,sz);
+-		ByteCount.low =(u8) data;
++		GdromByteCount.low =(u8) data;
+ 		break;
+ 
+ 	case GD_BYCTLHI: 
+ 		printf_rm("GDROM: Write to GD_BYCTLHI = %X, Size:%X",data,sz);
+-		ByteCount.hi =(u8) data;
++		GdromByteCount.hi =(u8) data;
+ 		break;
+ 
+ 	case GD_DATA: 
+@@ -1663,7 +1663,7 @@
+ 	SecCount = {};
+ 	SecNumber = {};
+ 	GDStatus = {};
+-	ByteCount = {};
++	GdromByteCount = {};
+ 	// and looks at what disc is in it
+ 	gd_swap_cancel();
+ 	gd_setdisc();
 --- a/core/hw/mem/_vmem.cpp
 +++ b/core/hw/mem/_vmem.cpp
 @@ -655,6 +655,11 @@
@@ -126,6 +233,56 @@
  }
  
  /// Creates mappings to the underlying file including mirroring sections
+--- a/core/reios/reios.cpp
++++ b/core/reios/reios.cpp
+@@ -99,6 +99,35 @@
+ 			| ((v >> 40) & 0x0000FF00)
+ 			| ((v >> 24) & 0x00FF0000)
+ 			| ((v >> 8) & 0xFF000000);
++}
++
++/* Patch the follow-camera vector before any game instructions execute.
++ * The two releases share this instruction sequence; literal offsets can differ.
++ * Only unused NOPs after an unconditional branch are used for the helper. */
++static bool thps2_follow_camera(u8 *ram)
++{
++    for (u32 base=0x70000;base<0x74000;base+=2) {
++        u16 *f=reinterpret_cast<u16 *>(ram+base);
++        if (f[0x8e/2]!=0xa04b || f[0x90/2]!=9 ||
++            f[0xb0/2]!=0x51c1 || f[0xb4/2]!=0x5237 ||
++            f[0xb6/2]!=0xe7f4 || f[0xb8/2]!=0x312c || f[0xba/2]!=0x417c ||
++            f[0xbc/2]!=0x1511 || f[0xc0/2]!=0x5238 ||
++            f[0xc2/2]!=0x312c || f[0xc4/2]!=0x417c || f[0xc6/2]!=0x1512 ||
++            f[0xca/2]!=0x5239 || f[0xcc/2]!=0x312c ||
++            (f[0xce/2]&0xff00)!=0x9600 || f[0xd0/2]!=0x417c || f[0xd2/2]!=0x1513)
++            continue;
++        bool cave=true;
++        for(u32 i=0x92/2;i<=0x9e/2;i++) if(f[i]!=9) cave=false;
++        if(!cave) continue;
++        const u16 helper[]={0x6023,0x4021,0x4021,0x320c,0x312c,0x000b,0x417c};
++        memcpy(f+0x92/2,helper,sizeof(helper));
++        f[0xb8/2]=0xbfeb;f[0xba/2]=9;
++        f[0xc2/2]=0xbfe6;f[0xc4/2]=9;
++        f[0xd0/2]=f[0xce/2]-1; /* relocate the PC-relative r6 literal load */
++        f[0xcc/2]=0xbfe1;f[0xce/2]=9;
++        return true;
++    }
++    return false;
+ }
+ 
+ static bool reios_locate_bootfile(const char* bootfile)
+@@ -222,6 +251,11 @@
+ 				descrambl_file(lba + 150, len, GetMemPtr(0x8c010000, 0));
+ 			else
+ 				libGDR_ReadSector(GetMemPtr(0x8c010000, 0), lba + 150, (len + 2047) / 2048, 2048);
++
++            if ((!strncmp(ip_meta.product_number,"T13006N",7) ||
++                 !strncmp(ip_meta.product_number,"T13008D",7)) &&
++                thps2_follow_camera(GetMemPtr(0x8c000000,0)))
++                NOTICE_LOG(REIOS,"THPS2 follow camera: 25 percent farther from skater");
+ 
+ 			delete[] temp;
+ 
 --- a/core/rend/TexCache.cpp
 +++ b/core/rend/TexCache.cpp
 @@ -232,6 +232,12 @@
@@ -169,21 +326,24 @@
  
  /*
  
-@@ -99,6 +100,23 @@
+@@ -99,6 +100,26 @@
  	}
  	else
  		glcache.Disable(GL_SCISSOR_TEST);
 +}
 +
-+/* THPS2 projection cheats widen the world but leave 2D screen coordinates
-+ * unchanged. Keep flat, depth-independent overlays in the central 4:3 area. */
++/* Keep THPS2 screen-space overlays in the centered original 4:3 region. */
 +static bool thps2_hud(const PolyParam *gp)
 +{
-+    if (pvrrc.isRTT || !settings.rend.WidescreenGameHacks || !gp->pcw.Texture ||
-+        gp->isp.DepthMode != 7 || gp->count < 3 ||
++    if (pvrrc.isRTT || !settings.rend.WidescreenGameHacks ||
++        (gp->isp.DepthMode != 4 && gp->isp.DepthMode != 7) || gp->count < 3 ||
 +        (strncmp(ip_meta.product_number, "T13006N", 7) && strncmp(ip_meta.product_number, "T13008D", 7)))
 +        return false;
 +    const float z = pvrrc.verts.head()[pvrrc.idx.head()[gp->first]].z;
++    /* THPS2 submits fonts, meters and stance icons in a separate UI depth
++     * band (7 + a small ordering bias), using GREATER, not ALWAYS. Flat world
++     * polygons and billboards use other depths and must retain the world FOV. */
++    if (z < 6.9f || z > 8.0f) return false;
 +    for (u32 i = 0; i < gp->count; ++i) {
 +        const Vertex &v = pvrrc.verts.head()[pvrrc.idx.head()[gp->first + i]];
 +        if (v.z != z || v.x < 0 || v.x > 640 || v.y < 0 || v.y > 480)
@@ -193,7 +353,7 @@
  }
  
  template <u32 Type, bool SortingEnabled>
-@@ -138,6 +156,7 @@
+@@ -138,6 +159,7 @@
  								  shadowed);
  
  	glcache.UseProgram(CurrentShader->program);
@@ -201,7 +361,7 @@
  	if (CurrentShader->trilinear_alpha != -1)
  		glUniform1f(CurrentShader->trilinear_alpha, ShaderUniforms.trilinear_alpha);
  	if (palette)
-@@ -779,6 +798,7 @@
+@@ -779,6 +801,7 @@
  
  	PipelineShader *shader = GetProgram(false, false, true, false, true, 0, false, 2, false, false, false, false, false);
  	glcache.UseProgram(shader->program);
@@ -209,7 +369,7 @@
  
  	glActiveTexture(GL_TEXTURE0);
  	glcache.BindTexture(GL_TEXTURE_2D, texId);
-@@ -912,6 +932,7 @@
+@@ -912,6 +935,7 @@
  	SetupMainVBO();
  	PipelineShader *shader = GetProgram(0, false, 1, 1, 0, 0, 0, 2, false, false, false, false, false);
  	glcache.UseProgram(shader->program);
@@ -217,7 +377,7 @@
  
  	{
  		struct Vertex vertices[] = {
-@@ -1006,6 +1027,7 @@
+@@ -1006,6 +1030,7 @@
  	SetupMainVBO();
  	PipelineShader *shader = GetProgram(0, false, 1, 1, 0, 0, 0, 2, false, false, false, false, false);
  	glcache.UseProgram(shader->program);
@@ -285,6 +445,35 @@
 +#endif
      }
      gl.rtt.tex = 0;
+ 
+--- a/core/serialize.cpp
++++ b/core/serialize.cpp
+@@ -120,7 +120,7 @@
+ extern GD_SecCountT SecCount;
+ extern GD_SecNumbT SecNumber;
+ extern GD_StatusT GDStatus;
+-extern ByteCount_t ByteCount ;
++extern ByteCount_t GdromByteCount ;
+ extern int GDROM_TICK;
+ 
+ //./core/hw/maple/maple_devs.o
+@@ -503,7 +503,7 @@
+ 	LIBRETRO_S(SecCount);
+ 	LIBRETRO_S(SecNumber);
+ 	LIBRETRO_S(GDStatus);
+-	LIBRETRO_S(ByteCount);
++	LIBRETRO_S(GdromByteCount);
+ 	LIBRETRO_S(GDROM_TICK);
+ 
+ 
+@@ -932,7 +932,7 @@
+ 	LIBRETRO_US(SecCount);
+ 	LIBRETRO_US(SecNumber);
+ 	LIBRETRO_US(GDStatus);
+-	LIBRETRO_US(ByteCount);
++	LIBRETRO_US(GdromByteCount);
+ 	LIBRETRO_US(GDROM_TICK);
+ 	gdrom_state_loaded();
  
 --- a/core/types.h
 +++ b/core/types.h
