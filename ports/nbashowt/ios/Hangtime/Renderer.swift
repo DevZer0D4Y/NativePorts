@@ -17,6 +17,9 @@ final class CRTView: MTKView, MTKViewDelegate {
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
     private var input: MTLTexture?
+    private var inputs: [MTLTexture] = []
+    private var uploadSlot = -1
+    private var uploads: [MTLCommandBuffer?] = Array(repeating: nil, count: 3)
     private var targets: [MTLTexture] = []
     private var feedbackIndex = 0
     private var emulatedFrame: Float = 0
@@ -38,18 +41,29 @@ final class CRTView: MTKView, MTKViewDelegate {
         colorPixelFormat = .bgra8Unorm
         isPaused = true; enableSetNeedsDisplay = false
         framebufferOnly = true; delegate = self
+        autoResizeDrawable = false
         clearColor = MTLClearColor(red: 0.055, green: 0.09, blue: 0.18, alpha: 1)
         isUserInteractionEnabled = false
     }
     required init(coder: NSCoder) { fatalError("init(coder:) unsupported") }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let scale = min(window?.screen.scale ?? UIScreen.main.scale, 1600 / max(1, max(bounds.width, bounds.height)))
+        drawableSize = CGSize(width: max(1, bounds.width * scale), height: max(1, bounds.height * scale))
+    }
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
     func upload(_ bytes: UnsafePointer<UInt8>, width: Int, height: Int, frameNumber: Float) {
         guard width > 0, height > 0 else { return }
         if input?.width != width || input?.height != height {
+            // Drain only on a size change. Ordinary uploads rotate through
+            // three slots, waiting only before reusing a still-busy texture.
+            for command in uploads { command?.waitUntilCompleted() }
+            uploads = Array(repeating: nil, count: 3); uploadSlot = -1
             let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
             d.storageMode = .shared; d.usage = .shaderRead
-            input = device?.makeTexture(descriptor: d)
+            inputs = (0..<3).compactMap { _ in device?.makeTexture(descriptor: d) }
+            guard inputs.count == 3 else { return }
             d.pixelFormat = .bgra8Unorm; d.usage = [.renderTarget, .shaderRead]
             targets = (0..<4).compactMap { _ in device?.makeTexture(descriptor: d) }
             feedbackIndex = 0
@@ -62,9 +76,13 @@ final class CRTView: MTKView, MTKViewDelegate {
                     pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
                     c.makeRenderCommandEncoder(descriptor: pass)?.endEncoding()
                 }
-                c.commit(); c.waitUntilCompleted()
+                c.commit()
             }
         }
+        uploadSlot = (uploadSlot + 1) % inputs.count
+        uploads[uploadSlot]?.waitUntilCompleted()
+        uploads[uploadSlot] = nil
+        input = inputs[uploadSlot]
         input?.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: bytes, bytesPerRow: width * 4)
         emulatedFrame = frameNumber; fresh = true
         // A dim average of the edge pixels fills the unused display, including game menus.
@@ -113,9 +131,10 @@ final class CRTView: MTKView, MTKViewDelegate {
         let height = fill ? h : min(h, w / aspect)
         let viewport = MTLViewport(originX: (w - width) / 2, originY: (h - height) / 2, width: width, height: height, znear: 0, zfar: 1)
         encode(c, target: drawable.texture, source: crt ? targets[feedbackIndex] : input,
-               mode: crt ? 4 : (smooth ? 5 : 0), viewport: viewport, clear: colorSides ? clearColor : MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1))
+               mode: crt ? 4 : (smooth ? 5 : 0), viewport: viewport, clear: colorSides && viewport.originY < 1 ? clearColor : MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1))
+        // Feedback passes stay ordered on this queue. CPU uploads reuse only
+        // a slot whose last reader has completed, so no per-frame GPU drain.
+        if uploadSlot >= 0 { uploads[uploadSlot] = c }
         c.present(drawable); c.commit()
-        // Keep texture uploads and feedback reuse behind GPU completion.
-        c.waitUntilCompleted()
     }
 }

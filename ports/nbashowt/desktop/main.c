@@ -9,43 +9,44 @@
 #include <windows.h>
 #include <commdlg.h>
 #include <xinput.h>
+#include <SDL_syswm.h>
 #endif
 
-/* RetroPad bits read by the core's classic layout: B = Turbo, Y = Pass/Steal, A = Shoot/Block. */
-enum { PAD_TURBO = 2, PAD_PASS = 256, PAD_COIN = 4, PAD_START = 8,
-       PAD_UP = 16, PAD_DOWN = 32, PAD_LEFT = 64, PAD_RIGHT = 128, PAD_SHOOT = 1 };
+/* PlayStation: Square shoots, Cross passes, R2 is Turbo. */
+enum { PAD_TURBO = 8192, PAD_PASS = 1, PAD_COIN = 1 << 2, PAD_START = 1 << 3,
+       PAD_UP = 1 << 4, PAD_DOWN = 1 << 5, PAD_LEFT = 1 << 6, PAD_RIGHT = 1 << 7, PAD_SHOOT = 2 };
 enum { A_UP, A_DOWN, A_LEFT, A_RIGHT, A_SHOOT, A_PASS, A_TURBO, A_SPIN, A_DUNK, A_SHOVE, A_COIN, A_START, A_COUNT };
-static const char *action_title[A_COUNT] = {"UP","DOWN","LEFT","RIGHT","SHOOT / BLOCK","PASS / STEAL","TURBO","SPIN MOVE","DUNK","SHOVE","COIN","START"};
-static const char *action_id[A_COUNT] = {"up","down","left","right","shoot","pass","turbo","spin","dunk","shove","coin","start"};
-static const uint16_t action_bits[A_COUNT] = {PAD_UP,PAD_DOWN,PAD_LEFT,PAD_RIGHT,PAD_SHOOT,PAD_PASS,PAD_TURBO,0,
-                                              PAD_TURBO|PAD_SHOOT,PAD_TURBO|PAD_PASS,PAD_COIN,PAD_START};
+static const char *action_title[A_COUNT] = {"UP","DOWN","LEFT","RIGHT","SHOOT / BLOCK","PASS / STEAL","TURBO","SPIN MOVE","DUNK","SHOVE","SELECT","START"};
+static const char *action_id[A_COUNT] = {"up","down","left","right","shoot","pass","turbo","spin","dunk","shove","select","start"};
+static const uint16_t action_bits[A_COUNT] = {PAD_UP,PAD_DOWN,PAD_LEFT,PAD_RIGHT,PAD_SHOOT,PAD_PASS,PAD_TURBO,0,PAD_TURBO|PAD_SHOOT,PAD_TURBO|PAD_PASS,4,8};
 /* Share and the paddles exist on Xbox Series and Elite controllers. pad_name is what settings.cfg stores,
    pad_title what the controls screen shows (Xbox names). */
 enum { P_A, P_B, P_X, P_Y, P_LB, P_RB, P_LT, P_RT, P_L3, P_R3, P_BACK, P_SHARE, P_PADDLE1, P_PADDLE2, P_PADDLE3, P_PADDLE4, P_COUNT };
 #include "XboxInput.h"
 static const char *pad_name[P_COUNT] = {"A","B","X","Y","LB","RB","LT","RT","L3","R3","BACK","SHARE","P1","P2","P3","P4"};
 static const char *pad_title[P_COUNT] = {"A","B","X","Y","LB","RB","LT","RT","LS","RS","VIEW","SHARE","P1","P2","P3","P4"};
-/* Controllers join as players 1, 3, 2 and 4: the first two play against each other. */
+/* First two controllers join opposite teams, matching Hangtime. */
 static const unsigned player_port[4] = {0, 2, 1, 3};
 static const SDL_Scancode default_keys[A_COUNT] = {SDL_SCANCODE_UP,SDL_SCANCODE_DOWN,SDL_SCANCODE_LEFT,SDL_SCANCODE_RIGHT,
-    SDL_SCANCODE_X,SDL_SCANCODE_C,SDL_SCANCODE_Z,SDL_SCANCODE_A,SDL_SCANCODE_S,SDL_SCANCODE_D,SDL_SCANCODE_5,SDL_SCANCODE_1};
+    SDL_SCANCODE_X,SDL_SCANCODE_C,SDL_SCANCODE_Z,SDL_SCANCODE_A,SDL_SCANCODE_S,SDL_SCANCODE_D,SDL_SCANCODE_TAB,SDL_SCANCODE_1};
 /* NBA 2K style pad: X shoots, A passes, triggers are Turbo. Start is fixed: tap = START, hold = pause. */
 static const unsigned default_pads[A_COUNT] = {0,0,0,0,1u<<P_X,1u<<P_A,1u<<P_RT|1u<<P_LT|1u<<P_RB,1u<<P_B,1u<<P_Y,1u<<P_LB,1u<<P_BACK,0};
 static SDL_Scancode keys[A_COUNT];
 static unsigned pads[A_COUNT];
 
 enum { SCREEN_FULL, SCREEN_SQUARE, SCREEN_ARCADE };
-static const char *screen_name[3] = {"FULL","SQUARE","ARCADE"};
+static const char *screen_name[3] = {"FULL","SQUARE","ORIGINAL"};
 static int screen_mode = SCREEN_ARCADE;
 static bool fullscreen = true;
 /* Color unused margins while preserving the selected image proportions. */
 static bool colorSides = true;
+static bool game_wide = true;
 /* NewPixie CRT processing, independent of game ROM patches. */
 static int crtMode = 1;
 static const char *crtMode_name[2] = {"OFF","ON"};
 enum { MENU_NONE, MENU_PAUSE, MENU_CONTROLS };
-enum { ITEM_RESUME, ITEM_CRT, ITEM_CONTROLS, ITEM_SIDES, ITEM_SCREEN, ITEM_FULLSCREEN, ITEM_RESTART, ITEM_QUIT, ITEM_COUNT };
-enum { MENU_TOP = 104, MENU_STEP = 54, MENU_H = 46, ROW_TOP = 136, ROW_STEP = 33 };
+enum { ITEM_RESUME, ITEM_CRT, ITEM_CONTROLS, ITEM_WIDE, ITEM_SIDES, ITEM_SCREEN, ITEM_FULLSCREEN, ITEM_RESTART, ITEM_QUIT, ITEM_COUNT };
+enum { MENU_TOP = 104, MENU_STEP = 48, MENU_H = 42, ROW_TOP = 136, ROW_STEP = 33 };
 static int menu, selection, capture = -1;
 static char notice[96];
 static Uint32 notice_until;
@@ -82,7 +83,7 @@ static void config_path(char *out,size_t size) { snprintf(out,size,"%ssettings.c
 static void save_config(void) {
     char path[4096]; config_path(path,sizeof path);
     FILE *f=fopen(path,"w"); if (!f) return;
-    fprintf(f,"screen=%d\nfullscreen=%d\ncolorSides=%d\ncrtMode=%d\n",screen_mode,fullscreen,colorSides,crtMode);
+    fprintf(f,"screen=%d\nfullscreen=%d\ncolorSides=%d\ncrtMode=%d\nwidescreen=%d\n",screen_mode,fullscreen,colorSides,crtMode,game_wide);
     for (int a=0;a<A_COUNT;a++) {
         fprintf(f,"key.%s=%s\npad.%s=",action_id[a],SDL_GetScancodeName(keys[a]),action_id[a]);
         for (int b=0;b<P_COUNT;b++) if (pads[a] & (1u << b)) fprintf(f,"%s ",pad_name[b]);
@@ -101,16 +102,18 @@ static void load_config(void) {
         if (!strcmp(line,"screen")) { int m=atoi(value); screen_mode=m>=0 && m<3 ? m : SCREEN_ARCADE; }
         else if (!strcmp(line,"fullscreen")) fullscreen=atoi(value)!=0;
         else if (!strcmp(line,"colorSides")) colorSides=atoi(value)!=0;
+        else if (!strcmp(line,"widescreen")) game_wide=atoi(value)!=0;
         else if (!strcmp(line,"crtMode")) { int h=atoi(value); crtMode=h>=0 && h<2 ? h : 0; }
         else for (int a=0;a<A_COUNT;a++) {
-            if (!strncmp(line,"key.",4) && !strcmp(line+4,action_id[a])) keys[a]=SDL_GetScancodeFromName(value);
-            if (!strncmp(line,"pad.",4) && !strcmp(line+4,action_id[a])) {
+            if (!strncmp(line,"key.",4) && (!strcmp(line+4,action_id[a]) || (a==A_COIN && !strcmp(line+4,"coin")))) keys[a]=SDL_GetScancodeFromName(value);
+            if (!strncmp(line,"pad.",4) && (!strcmp(line+4,action_id[a]) || (a==A_COIN && !strcmp(line+4,"coin")))) {
                 pads[a]=0;
                 for (char *t=strtok(value," ");t;t=strtok(NULL," ")) for (int b=0;b<P_COUNT;b++) if (!strcmp(t,pad_name[b])) pads[a] |= 1u << b;
             }
         }
     }
     fclose(f);
+    if (keys[A_COIN] == SDL_SCANCODE_5) keys[A_COIN] = SDL_SCANCODE_TAB;
 }
 static void bind_key(int action,SDL_Scancode scancode) {
     /* Swap with whatever action owned the key, so nothing is left with a duplicate. */
@@ -214,6 +217,10 @@ static void toggle_fullscreen(void) {
     SDL_SetWindowFullscreen(window,fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
     save_config();
 }
+static void toggle_widescreen(void) {
+    game_wide=!game_wide; ht_set_widescreen(game_wide); save_config();
+    show_notice(game_wide ? "WIDESCREEN ON" : "WIDESCREEN OFF");
+}
 static void toggle_colorSides(void) {
     colorSides=!colorSides;  save_config();
     show_notice(colorSides ? "COLOR SIDES ON" : "COLOR SIDES OFF");
@@ -243,7 +250,7 @@ static bool load_rom(const char *path) {
     size_t capacity=strlen(save_dir)+32;
     char *canonical=malloc(capacity), *staging=malloc(capacity);
     if (!canonical || !staging) { free(canonical); free(staging); message("Out of memory."); return false; }
-    snprintf(canonical,capacity,"%snbashowt.zip",save_dir);
+    snprintf(canonical,capacity,"%snbashowt.bin",save_dir);
     snprintf(staging,capacity,"%simport.tmp",save_dir);
     bool ready=true;
     if (strcmp(path,canonical)) {
@@ -264,9 +271,9 @@ static bool load_rom(const char *path) {
     spec.freq=(int)ht_sample_rate(); spec.format=AUDIO_F32SYS; spec.channels=2; spec.samples=1024; spec.callback=audio_callback;
     audio_device=SDL_OpenAudioDevice(NULL,0,&spec,&actual,0);
     if (!audio_device) message(SDL_GetError());
-    SDL_SetWindowTitle(window,"NBA Showtime - NBA on NBC - Esc: menu | F1: controls | F9: colorSides | F10: screen mode | F11: fullscreen");
+    SDL_SetWindowTitle(window,"NBA Showtime PS1 0.3.0 - Esc: menu | F1: controls | F8: widescreen | F9: color sides | F10: screen mode | F11: fullscreen");
     reset_players(false); set_paused(false);
-    show_notice("PRESS 5 FOR A CREDIT, THEN 1 TO START");
+    show_notice("PRESS 1 OR CONTROLLER START TO PLAY");
     return true;
 }
 static void choose_file(void) {
@@ -274,11 +281,11 @@ static void choose_file(void) {
     char path[4096]="";
     OPENFILENAMEA dialog={0}; dialog.lStructSize=sizeof dialog;
     dialog.lpstrFile=path; dialog.nMaxFile=sizeof path;
-    dialog.lpstrFilter="ZIP archives\0*.zip\0\0"; dialog.lpstrTitle="Select the complete nbashowt.zip (Arcade ver 2.0)";
+    dialog.lpstrFilter="Disc images\0*.bin\0\0"; dialog.lpstrTitle="Select the complete nbashowt.bin (PlayStation)";
     dialog.Flags=OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
     if (GetOpenFileNameA(&dialog)) load_rom(path);
 #else
-    message("Drag nbashowt.zip into the window or pass its path on the command line.");
+    message("Drag nbashowt.bin into the window or pass its path on the command line.");
 #endif
 }
 static void update_controllers(void) {
@@ -402,14 +409,15 @@ static void pad_label(int action,char *out,size_t size) {
     if (!out[0]) snprintf(out,size,"-");
 }
 static void draw_pause(void) {
-    header("PAUSED","ESC");
+    header("SHOWTIME 0.3.0","ESC");
     char labels[ITEM_COUNT][40];
     snprintf(labels[ITEM_RESUME],40,"RESUME"); snprintf(labels[ITEM_CONTROLS],40,"CONTROLS");
     snprintf(labels[ITEM_CRT],40,"CRT FILTER: < %s >",crtMode_name[crtMode]);
+    snprintf(labels[ITEM_WIDE],40,"WIDESCREEN: %s",game_wide ? "ON" : "OFF");
     snprintf(labels[ITEM_SIDES],40,"COLOR SIDES: %s",colorSides ? "ON" : "OFF");
     snprintf(labels[ITEM_SCREEN],40,"SCREEN: < %s >",screen_name[screen_mode]);
     snprintf(labels[ITEM_FULLSCREEN],40,"FULLSCREEN: %s",fullscreen ? "ON" : "OFF");
-    snprintf(labels[ITEM_RESTART],40,"RESTART ARCADE"); snprintf(labels[ITEM_QUIT],40,"QUIT GAME");
+    snprintf(labels[ITEM_RESTART],40,"RESTART GAME"); snprintf(labels[ITEM_QUIT],40,"QUIT GAME");
     for (int i=0;i<ITEM_COUNT;i++) {
         int y=MENU_TOP+i*MENU_STEP; bool on=i==selection;
         if (on) fill(200,y,400,MENU_H,252,188,41,255); else fill(200,y,400,MENU_H,0,0,0,150);
@@ -435,9 +443,9 @@ static void draw_launcher(void) {
     fill(0,0,800,600,9,12,19,255);
     gold(); text("NBA SHOWTIME",140,5);
     SDL_Rect button={190,270,420,70}; SDL_RenderFillRect(renderer,&button);
-    SDL_SetRenderDrawColor(renderer,9,12,19,255); text("OPEN ROM ARCHIVE",292,3);
-    SDL_SetRenderDrawColor(renderer,190,199,212,255); text("OR DRAG THE ZIP FILE HERE",380,2);
-    text("COMPLETE Arcade ver 2.0 SET WITH GRAPHICS AND SOUND",420,2);
+    SDL_SetRenderDrawColor(renderer,9,12,19,255); text("OPEN DISC IMAGE",292,3);
+    SDL_SetRenderDrawColor(renderer,190,199,212,255); text("OR DRAG THE CHD FILE HERE",380,2);
+    text("PLAYSTATION DISC IMAGE REQUIRED",420,2);
 }
 /* FULL stretches to the window, SQUARE keeps square pixels, ARCADE keeps the arcade monitor's pixel shape
    (4:3 until an expanded gameplay patch is implemented). */
@@ -454,7 +462,7 @@ static void draw(void) {
     int width,height; SDL_GetRendererOutputSize(renderer,&width,&height);
     SDL_RenderSetLogicalSize(renderer,0,0);
     SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
-    if (running) SDL_SetRenderDrawColor(renderer,colorSides?12:0,colorSides?22:0,colorSides?43:0,255); else SDL_SetRenderDrawColor(renderer,9,12,19,255);
+    if (running) SDL_SetRenderDrawColor(renderer,0,0,0,255); else SDL_SetRenderDrawColor(renderer,9,12,19,255);
     SDL_RenderClear(renderer);
     if (running && ht_width() && ht_height()) {
         int w=(int)ht_width(), h=(int)ht_height(), tw=0,th=0;
@@ -463,6 +471,10 @@ static void draw(void) {
         if (texture) {
             SDL_UpdateTexture(texture,NULL,ht_pixels(),w*4);
             SDL_Rect rect=game_rect(width,height);
+            if (colorSides && rect.x > 0) {
+                fill(0,rect.y,rect.x,rect.h,12,22,43,255);
+                fill(rect.x+rect.w,rect.y,width-rect.x-rect.w,rect.h,12,22,43,255);
+            }
             if (!crtMode || !crt_draw(renderer,texture,ht_pixels(),w,h,rect,true)) SDL_RenderCopy(renderer,texture,NULL,&rect);
         }
         if (menu!=MENU_NONE) fill(0,0,width,height,0,0,0,190);
@@ -485,6 +497,7 @@ static void menu_adjust(int delta) {
     if (menu!=MENU_PAUSE) return;
     if (selection==ITEM_SCREEN) cycle_screen(delta);
     else if (selection==ITEM_CRT) cycle_crtMode(delta);
+    else if (selection==ITEM_WIDE) toggle_widescreen();
     else if (selection==ITEM_SIDES) toggle_colorSides();
     else if (selection==ITEM_FULLSCREEN) toggle_fullscreen();
 }
@@ -493,11 +506,12 @@ static void menu_accept(bool *quit) {
     switch (selection) {
     case ITEM_RESUME: close_menu(); break;
     case ITEM_CONTROLS: menu=MENU_CONTROLS; selection=0; break;
+    case ITEM_WIDE: toggle_widescreen(); break;
     case ITEM_SIDES: toggle_colorSides(); break;
     case ITEM_CRT: cycle_crtMode(1); break;
     case ITEM_SCREEN: cycle_screen(1); break;
     case ITEM_FULLSCREEN: toggle_fullscreen(); break;
-    case ITEM_RESTART: ht_reset(); close_menu(); show_notice("ARCADE RESTARTED"); break;
+    case ITEM_RESTART: ht_reset(); close_menu(); show_notice("GAME RESTARTED"); break;
     case ITEM_QUIT: *quit=true; break;
     }
 }
@@ -520,6 +534,7 @@ static void key_down(const SDL_KeyboardEvent *event,bool *quit) {
         return;
     }
     if (s==SDL_SCANCODE_F10) { if (!event->repeat) cycle_screen(1); return; }
+    if (s==SDL_SCANCODE_F8) { if (!event->repeat) toggle_widescreen(); return; }
     if (s==SDL_SCANCODE_F9) { if (!event->repeat) toggle_colorSides(); return; }
     if (menu==MENU_NONE) {
         if (event->repeat) return;
@@ -636,7 +651,7 @@ static void run_snapshots(const char *directory) {
     screen_mode=SCREEN_ARCADE; menu=MENU_PAUSE; selection=ITEM_SIDES; snapshot(directory,"menu-pause");
     menu=MENU_CONTROLS; selection=A_TURBO; snapshot(directory,"menu-controls");
     capture=A_SHOOT; selection=A_SHOOT; snapshot(directory,"menu-capture");
-    menu=MENU_NONE; capture=-1; show_notice("PRESS 5 FOR A CREDIT, THEN 1 TO START"); snapshot(directory,"game-notice");
+    menu=MENU_NONE; capture=-1; show_notice("PRESS 1 OR CONTROLLER START TO PLAY"); snapshot(directory,"game-notice");
     running=false; snapshot(directory,"launcher"); running=true;
     /* the attract demo reaches the court a little later */
     colorSides=true;  notice[0]=0;
@@ -655,7 +670,7 @@ int main(int argc,char **argv) {
     bool snapshots=argc>2 && !strcmp(argv[1],"--snapshot");
     if (argc>2 && !strcmp(argv[1],"--audit")) {
         char report[8192]; bool ok=ht_validate_rom(argv[2],report,sizeof report);
-        printf("%s\n",ok ? "Arcade ver 2.0 ROM set complete and valid." : report); return ok ? 0 : 2;
+        printf("%s\n",ok ? "PlayStation ROM set complete and valid." : report); return ok ? 0 : 2;
     }
 #ifdef _WIN32
     /* Use the native XInput backend for Xbox pads instead of opening the
@@ -667,17 +682,26 @@ int main(int argc,char **argv) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER)) { fprintf(stderr,"%s\n",SDL_GetError()); return 1; }
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,"0");
     bool hidden=smoke || snapshots;
-    window=SDL_CreateWindow("NBA Showtime - NBA on NBC - Open or drop nbashowt.zip",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,
+    window=SDL_CreateWindow("NBA Showtime - NBA on NBC 0.3.0 - Open or drop nbashowt.bin",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,
                             snapshots ? 1280 : 960,720,SDL_WINDOW_RESIZABLE | (hidden ? SDL_WINDOW_HIDDEN : 0));
     renderer=window ? SDL_CreateRenderer(window,-1,hidden ? SDL_RENDERER_SOFTWARE : SDL_RENDERER_ACCELERATED) : NULL;
     if (!renderer && window) renderer=SDL_CreateRenderer(window,-1,SDL_RENDERER_SOFTWARE);
     if (!window || !renderer) { fprintf(stderr,"%s\n",SDL_GetError()); SDL_Quit(); return 1; }
+#ifdef _WIN32
+    SDL_SysWMinfo wm;
+    SDL_VERSION(&wm.version);
+    if (SDL_GetWindowWMInfo(window, &wm)) {
+        HICON icon = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(1));
+        SendMessage(wm.info.win.window, WM_SETICON, ICON_BIG, (LPARAM)icon);
+        SendMessage(wm.info.win.window, WM_SETICON, ICON_SMALL, (LPARAM)icon);
+    }
+#endif
     if (snapshots) {
         save_dir=malloc(strlen(argv[2])+2);
         if (save_dir) sprintf(save_dir,"%s/",argv[2]);
     } else save_dir=SDL_GetPrefPath("NativePorts","nbashowt");
     if (!save_dir) { message("Could not create the data folder."); SDL_Quit(); return 1; }
-    load_config(); reset_players(false);
+    load_config(); ht_set_widescreen(game_wide); reset_players(false);
     
     
     if (fullscreen && !hidden) SDL_SetWindowFullscreen(window,SDL_WINDOW_FULLSCREEN_DESKTOP);
@@ -687,7 +711,7 @@ int main(int argc,char **argv) {
     } else if (argc>1 && !smoke) load_rom(argv[1]);
     else if (!smoke) {
         char *path=malloc(strlen(save_dir)+32);
-        if (path) { sprintf(path,"%snbashowt.zip",save_dir); FILE *f=fopen(path,"rb"); if (f) { fclose(f); load_rom(path); } free(path); }
+        if (path) { sprintf(path,"%snbashowt.bin",save_dir); FILE *f=fopen(path,"rb"); if (f) { fclose(f); load_rom(path); } free(path); }
     }
     Uint64 frequency=SDL_GetPerformanceFrequency(), previous=SDL_GetPerformanceCounter(), last_save=previous;
     double accumulated=0; bool quit=snapshots; unsigned rendered=0;

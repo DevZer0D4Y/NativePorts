@@ -43,6 +43,6 @@
       "Verify live toggle and original view restoration",
       "Verify with supported game image on iOS and Windows"
     ],
-    "implementation": "Flycast's widescreen patch for the USA and PAL discs, shown at 16:9."
+    "implementation": "Dreamcast widescreen projection with original 4:3 HUD centered using the actual UI depth band. A signature-checked boot patch increases normal follow-camera offsets by 25%; verified with the USA executable."
   }
 }

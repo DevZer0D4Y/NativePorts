@@ -17,6 +17,9 @@ enum Style {
 enum ControlID: String, CaseIterable, Codable {
     case stick, shoot, pass, turbo, spin, dunk, shove, coin, start
 
+    // Console games have no coin input. Keep the legacy enum case only for saved layouts.
+    static var available: [ControlID] { allCases.filter { $0 != .coin } }
+
     var action: Action? { Action(rawValue: rawValue) }
     var isPill: Bool { self == .coin || self == .start }
     var canHide: Bool { self == .turbo || self == .spin || self == .dunk || self == .shove }
@@ -41,11 +44,11 @@ enum Icon {
         switch id {
         case .shoot: return draw(side, hoop)
         case .pass: return draw(side, pass)
-        case .dunk: return draw(side, dunk)
+        case .dunk: return symbol("person.2.fill", side)
         case .turbo: return symbol("bolt.fill", side)
-        case .spin: return symbol("arrow.clockwise", side)
-        case .shove: return symbol("hand.raised.fill", side)
-        case .coin: return symbol("centsign.circle.fill", side)
+        case .spin: return symbol("hand.raised.fill", side)
+        case .shove: return symbol("person.fill", side)
+        case .coin: return symbol("rectangle", side)
         case .start: return symbol("play.fill", side)
         case .stick: return nil
         }
@@ -422,7 +425,7 @@ final class ControlsView: UIView {
         super.init(frame: frame)
         isMultipleTouchEnabled = true
         addSubview(stick); addSubview(sprintBadge)
-        for id in ControlID.allCases where id != .stick {
+        for id in ControlID.available where id != .stick {
             let button = ActionButton(id)
             button.onChange = { [weak self] pressed in self?.buttonChanged(id, pressed) }
             buttons[id] = button; addSubview(button)

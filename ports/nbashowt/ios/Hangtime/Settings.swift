@@ -12,12 +12,12 @@ final class GameSettings {
     /// FULL stretches, SQUARE keeps square pixels, ARCADE keeps the arcade monitor's pixel shape.
     enum Screen: Int { case full, square, arcade }
     enum TouchMode: Int { case auto, on, off }
-    static let defaultHidden: Set<ControlID> = [.dunk, .shove]
+    static let defaultHidden: Set<ControlID> = []
 
     private let store = UserDefaults.standard
     private init() {
         store.register(defaults: ["edgeSprint": true, "floatingStick": true, "haptics": true, "opacity": 2, "buttonSize": 1,
-                                  "screen": Screen.arcade.rawValue, "colorSides": true, "crtMode": 1])
+                                  "screen": Screen.arcade.rawValue, "colorSides": true, "crtMode": 1, "gameWidescreen": true])
     }
 
     var screen: Screen {
@@ -29,6 +29,11 @@ final class GameSettings {
         set { store.set(newValue.rawValue, forKey: "touchMode") }
     }
     /// Fills unused display margins with color.
+    /// Shows more of the stage during play, without stretching. Menus stay 4:3.
+    var gameWidescreen: Bool {
+        get { store.bool(forKey: "gameWidescreen") }
+        set { store.set(newValue, forKey: "gameWidescreen") }
+    }
     var colorSides: Bool {
         get { store.bool(forKey: "colorSides") }
         set { store.set(newValue, forKey: "colorSides") }

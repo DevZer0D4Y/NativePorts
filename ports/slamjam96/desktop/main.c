@@ -668,7 +668,7 @@ int main(int argc,char **argv) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER)) { fprintf(stderr,"%s\n",SDL_GetError()); return 1; }
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,"0");
     bool hidden=smoke || snapshots;
-    window=SDL_CreateWindow("Slam’n’Jam 96 - Open or drop slamjam96.chd",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,
+    window=SDL_CreateWindow("Slam’n’Jam 96 0.3.0 - Open or drop slamjam96.chd",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,
                             snapshots ? 1280 : 960,720,SDL_WINDOW_RESIZABLE | (hidden ? SDL_WINDOW_HIDDEN : 0));
     renderer=window ? SDL_CreateRenderer(window,-1,hidden ? SDL_RENDERER_SOFTWARE : SDL_RENDERER_ACCELERATED) : NULL;
     if (!renderer && window) renderer=SDL_CreateRenderer(window,-1,SDL_RENDERER_SOFTWARE);

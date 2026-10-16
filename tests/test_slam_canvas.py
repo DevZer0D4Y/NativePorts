@@ -11,6 +11,8 @@ fixture = r'''
 #include <assert.h>
 #include <stdio.h>
 typedef unsigned u32;
+static int gpu_widescreen_native_width=320,gpu_widescreen_second_x=320;
+
 typedef struct { int offset_x,viewport_start_x,viewport_end_x; } psx_gpu_struct;
 static int sign_extend_11bit(unsigned v) { return ((int)(v<<21))>>21; }
 int main(void);
@@ -27,10 +29,16 @@ int main(void) {
   assert(g.offset_x==320 && g.viewport_start_x==320 && g.viewport_end_x==639);
   regs[4]=511;port_draw_window(&g,regs,1);
   assert(g.offset_x==320 && g.viewport_end_x==511);
+  gpu_widescreen_native_width=368;regs[3]=0;regs[4]=383;regs[5]=0;port_draw_window(&g,regs,1);
+  assert(g.offset_x==64 && g.viewport_end_x==511);
+  regs[3]=384;regs[4]=767;regs[5]=384;port_draw_window(&g,regs,1);
+  assert(g.offset_x==576 && g.viewport_start_x==512 && g.viewport_end_x==1023);
+  assert(gpu_widescreen_second_x==384);
   puts("PASS: native scale, centered HUD, isolated double buffers, unchanged guest registers, toggle restoration.");
 }
 '''
 p = b / 'canvas.c'
-p.write_text(fixture + body + main)
+pad = s[s.index('int gpu_widescreen_pad('):].splitlines()[0]
+p.write_text(fixture + pad + body + main)
 subprocess.run(['clang', str(p), '-o', str(b / 'canvas')], check=True)
 subprocess.run([str(b / 'canvas')], check=True)

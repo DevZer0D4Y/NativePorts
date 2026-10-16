@@ -1,12 +1,94 @@
+--- a/frontend/libretro.c
++++ b/frontend/libretro.c
+@@ -3499,8 +3499,10 @@
+ static bool get_bios_config_hle(void);
+ static void prepare_bios(bool use_hle);
+ 
++extern int port_slam_clip, gpu_widescreen, gpu_widescreen_active;
+ void retro_run(void)
+ {
++   port_slam_clip = gpu_widescreen && gpu_widescreen_active && !strcmp(CdromId,"SLES00076");
+    //SysReset must be run while core is running,Not in menu (Locks up Retroarch)
+    if (reset_pending)
+    {
+--- a/libpcsxcore/psxinterpreter.c
++++ b/libpcsxcore/psxinterpreter.c
+@@ -39,6 +39,29 @@
+ #ifndef INVALID_PTR
+ #define INVALID_PTR NULL
+ #endif
++
++/* SLES-00076 software scenery clipping. The GPU canvas alone cannot
++ * recover primitives culled by the game's MIPS display-list builders.
++ * Substitute only identified clipping operations, without changing guest RAM,
++ * coordinates, texture data or the 4:3 path. Both ports use this interpreter. */
++int port_slam_clip;
++static inline u32 slam_clip_lui(u32 pc, u32 code)
++{
++ if (!port_slam_clip || (code & 0xffff) != 319) return code << 16;
++ switch (pc - 4) {
++ case 0x80055b80: case 0x80055d5c: case 0x80055eac:
++ case 0x800571b0: case 0x80057600: case 0x800577a0:
++ case 0x800577b4: case 0x80057c54: case 0x80058008:
++  return 372u << 16;
++ default: return code << 16;
++ }
++}
++static inline s32 slam_clip_left(u32 pc)
++{
++ if (port_slam_clip && (pc == 0x80055c24 || pc == 0x80055e00 || pc == 0x80055f54))
++  return -53 * 65536;
++ return 0;
++}
+ 
+ // Subsets
+ static void (INT_ATTR *psxBSC[64])(psxRegisters *regs_, u32 code);
+@@ -499,7 +522,13 @@
+ OP(psxXOR)   { dloadRt(regs_, _Rd_, _u32(_rRs_) ^ _u32(_rRt_)); }  // Rd = Rs Xor Rt
+ OP(psxNOR)   { dloadRt(regs_, _Rd_, ~_u32(_rRs_ | _u32(_rRt_))); } // Rd = Rs Nor Rt
+ OP(psxSLT)   { dloadRt(regs_, _Rd_, _i32(_rRs_) < _i32(_rRt_)); }  // Rd = Rs < Rt (Signed)
+-OP(psxSLTU)  { dloadRt(regs_, _Rd_, _u32(_rRs_) < _u32(_rRt_)); }  // Rd = Rs < Rt (Unsigned)
++OP(psxSLTU)  {
++ u32 pc=regs_->pc, a=_u32(_rRs_), b=_u32(_rRt_);
++ if (port_slam_clip && a == 0x0174ffff &&
++     (pc == 0x80057620 || pc == 0x800577ac || pc == 0x800577c4))
++  dloadRt(regs_, _Rd_, (s32)a < (s32)b);
++ else dloadRt(regs_, _Rd_, a < b);
++}  // Rd = Rs < Rt (Unsigned)
+ 
+ /*********************************************************
+ * Register mult/div & Register trap logic                *
+@@ -595,7 +624,7 @@
+ OP(psxBGEZ)   { RepZBranchi32(>=) }      // Branch if Rs >= 0
+ OP(psxBGEZAL) { RepZBranchLinki32(>=) }  // Branch if Rs >= 0 and link
+ OP(psxBGTZ)   { RepZBranchi32(>) }       // Branch if Rs >  0
+-OP(psxBLEZ)   { RepZBranchi32(<=) }      // Branch if Rs <= 0
++OP(psxBLEZ)   { doBranch(regs_, _BranchTarget_, BrCond(_i32(_rRs_) <= slam_clip_left(regs_->pc))); }      // Branch if Rs <= 0
+ OP(psxBLTZ)   { RepZBranchi32(<) }       // Branch if Rs <  0
+ OP(psxBLTZAL) { RepZBranchLinki32(<) }   // Branch if Rs <  0 and link
+ 
+@@ -619,7 +648,7 @@
+ * Load higher 16 bits of the first word in GPR with imm  *
+ * Format:  OP rt, immediate                              *
+ *********************************************************/
+-OP(psxLUI) { dloadRt(regs_, _Rt_, code << 16); } // Upper halfword of Rt = Im
++OP(psxLUI) { dloadRt(regs_, _Rt_, slam_clip_lui(regs_->pc,code)); } // Upper halfword of Rt = Im
+ 
+ /*********************************************************
+ * Move from HI/LO to GPR                                 *
 --- a/plugins/gpu_neon/psx_gpu/psx_gpu_parse.c
 +++ b/plugins/gpu_neon/psx_gpu/psx_gpu_parse.c
-@@ -282,6 +282,43 @@
+@@ -282,6 +282,49 @@
      render_triangle_p(psx_gpu, triangle.vertexes, current_command);
  }
  
 +/* Native software geometry is rendered into an expanded GPU canvas.
 +   Movies keep their original drawing area and aspect. */
 +int gpu_widescreen, gpu_widescreen_active;
++int gpu_widescreen_native_width = 320, gpu_widescreen_second_x = 320;
++int gpu_widescreen_output_extra;
++/* Keep the 368-column renderer aligned to its 8-pixel texture/dither blocks. */
++int gpu_widescreen_pad(int native) { return native == 368 ? 64 : native/6; }
 +static unsigned gpu_frame_prims, gpu_recent_prims[8], gpu_recent_slot;
 +
 +/* Called once per emulated frame: 3D scenes draw hundreds of primitives. */
@@ -30,11 +112,13 @@
 +static void port_draw_window(psx_gpu_struct *g, const u32 *regs, int wide)
 +{
 +  int left = regs[3] & 1023, right = regs[4] & 1023;
-+  int full = wide && right - left == 319 && right + 106 < 1024;
-+  int bank = full && left == 320 ? 192 : 0;
-+  g->offset_x = sign_extend_11bit(regs[5]) + (full ? 53 : 0) + bank;
++  int native = gpu_widescreen_native_width, pad = gpu_widescreen_pad(native);
++  int full = wide && (native == 320 || native == 368) && (right-left+1 == native || (native == 368 && right-left+1 == 384)) && left <= 512;
++  int bank = full && left > 0 ? 512-left : 0;
++  if (full && left > 0) gpu_widescreen_second_x = left;
++  g->offset_x = sign_extend_11bit(regs[5]) + (full ? pad : 0) + bank;
 +  g->viewport_start_x = left + bank;
-+  g->viewport_end_x = right + (full ? 106 : 0) + bank;
++  g->viewport_end_x = right + (full ? pad*2 : 0) + bank;
 +#ifdef TEXTURE_CACHE_4BPP
 +  g->viewport_mask = texture_region_mask(g->viewport_start_x,g->viewport_start_y,
 +    g->viewport_end_x,g->viewport_end_y);
@@ -44,7 +128,7 @@
  u32 gpu_parse(psx_gpu_struct *psx_gpu, u32 *list, u32 size, u32 *ex_regs,
   s32 *cpu_cycles_sum_out, s32 *cpu_cycles_last, u32 *last_command)
  {
-@@ -303,6 +340,10 @@
+@@ -303,6 +346,10 @@
        break;
      }
  
@@ -55,13 +139,14 @@
      switch(current_command)
      {
        case 0x00:
-@@ -316,7 +357,14 @@
+@@ -316,7 +363,15 @@
          u32 height = list_s16[5] & 0x1FF;
          u32 color = list[0] & 0xFFFFFF;
  
 -        do_fill(psx_gpu, x, y, width, height, color);
-+        if (gpu_widescreen && gpu_widescreen_active && width == 320 && (x == 0 || x == 320))
-+          do_fill(psx_gpu, x == 320 ? 512 : x, y, 432, height, color);
++        if (gpu_widescreen && gpu_widescreen_active && width == gpu_widescreen_native_width &&
++            (x == 0 || x == gpu_widescreen_second_x))
++          do_fill(psx_gpu, x > 0 ? 512 : 0, y, (width + gpu_widescreen_pad(width)*2 + 15) & ~15, height, color);
 +        else {
 +          u16 *out = psx_gpu->vram_out_ptr;
 +          psx_gpu->vram_out_ptr = psx_gpu->vram_ptr;
@@ -71,7 +156,7 @@
          gput_sum(cpu_cycles_sum, cpu_cycles, gput_fill(width, height));
          break;
        }
-@@ -808,6 +856,7 @@
+@@ -808,6 +863,7 @@
    }
  
  breakloop:
@@ -81,7 +166,7 @@
    *last_command = current_command;
 --- a/plugins/gpu_neon/psx_gpu_if.c
 +++ b/plugins/gpu_neon/psx_gpu_if.c
-@@ -33,12 +33,15 @@
+@@ -33,12 +33,17 @@
  #include "psx_gpu/psx_gpu.c"
  #include "psx_gpu/psx_gpu_parse.c"
  
@@ -92,12 +177,14 @@
   int *cycles_sum, int *cycles_last, int *last_cmd)
  {
    int ret;
-+  int wide = gpu_widescreen && gpu_widescreen_active && gpu.screen.hres == 320;
++  int native = gpu.screen.hres;
++  int wide = gpu_widescreen && gpu_widescreen_active && (native == 320 || native == 368);
++  gpu_widescreen_native_width = native;
 +  egpu.vram_out_ptr = wide ? port_wide_vram : egpu.vram_ptr;
  
    if (gpu.state.enhancement_active)
      ret = gpu_parse_enhanced(&egpu, list, count * 4, ex_regs,
-@@ -47,6 +50,19 @@
+@@ -47,6 +52,19 @@
      ret = gpu_parse(&egpu, list, count * 4, ex_regs,
              cycles_sum, cycles_last, (u32 *)last_cmd);
  
@@ -107,10 +194,10 @@
 +    flush_render_block_buffer(&egpu);
 +    /* Preserve the guest framebuffer and keep textures in native VRAM intact.
 +     * Wide buffers live in independent 512-column banks, never over textures. */
-+    if (right - x == 319 && (x == 0 || x == 320)) {
-+      int src = (x == 320 ? 512 : 0) + 53;
++    if ((right-x+1 == native || (native == 368 && right-x+1 == 384)) && (x == 0 || x == gpu_widescreen_second_x)) {
++      int src = (x > 0 ? 512 : 0) + gpu_widescreen_pad(native);
 +      for (; y <= bottom; ++y)
-+        memcpy(egpu.vram_ptr + y*1024+x, port_wide_vram+y*1024+src,320*2);
++        memcpy(egpu.vram_ptr + y*1024+x, port_wide_vram+y*1024+src,native*2);
 +    }
 +  }
 +  egpu.vram_out_ptr = egpu.vram_ptr;
@@ -119,21 +206,22 @@
    return ret;
 --- a/plugins/gpulib/vout_pl.c
 +++ b/plugins/gpulib/vout_pl.c
-@@ -25,6 +25,13 @@
+@@ -25,6 +25,14 @@
    return 0;
  }
  
-+extern int gpu_widescreen, gpu_widescreen_active;
++extern int gpu_widescreen, gpu_widescreen_active, gpu_widescreen_second_x, gpu_widescreen_output_extra;
 +extern uint16_t port_wide_vram[];
++extern int gpu_widescreen_pad(int native);
 +static int port_extra_width(struct psx_gpu *gpu) {
-+  return gpu_widescreen && gpu_widescreen_active && gpu->screen.hres == 320 &&
-+    !(gpu->status & PSX_GPU_STATUS_RGB24) ? 106 : 0;
++  return gpu_widescreen && gpu_widescreen_active && (gpu->screen.hres == 320 || gpu->screen.hres == 368) &&
++    !(gpu->status & PSX_GPU_STATUS_RGB24) ? gpu_widescreen_pad(gpu->screen.hres)*2 : 0;
 +}
 +
  static void check_mode_change(struct psx_gpu *gpu, int force)
  {
    int w = gpu->screen.hres;
-@@ -33,6 +40,7 @@
+@@ -33,6 +41,7 @@
  
    if (gpu->state.screen_centering_type == C_BORDERLESS)
      h = gpu->screen.h;
@@ -141,7 +229,7 @@
    w_out = w, h_out = h;
  #ifdef RAW_FB_DISPLAY
    w = w_out = (gpu->status & PSX_GPU_STATUS_RGB24) ? 2048/3 : 1024;
-@@ -73,11 +81,15 @@
+@@ -73,11 +82,16 @@
    uint8_t *vram = (uint8_t *)gpu->vram;
    int x = gpu->screen.x;
    int y = gpu->screen.y;
@@ -151,9 +239,10 @@
    int vram_h = 512;
    int src_x2 = 0;
    int offset;
-+  if (port_extra_width(gpu)) {
++  gpu_widescreen_output_extra = port_extra_width(gpu);
++  if (gpu_widescreen_output_extra) {
 +    vram = (uint8_t *)port_wide_vram;
-+    if (src_x == 320) src_x = 512;
++    if (src_x == gpu_widescreen_second_x) src_x = 512;
 +  }
  
  #ifdef RAW_FB_DISPLAY

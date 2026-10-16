@@ -43,6 +43,6 @@
       "Verify live toggle and original view restoration",
       "Verify with supported game image on iOS and Windows"
     ],
-    "implementation": "Full 512-pixel rows during fights: the mkdisp screen window is widened, floor lines and repeating tile rows are extended, static bands are mirrored at the old edges. Fighters stay within the original screen bounds; menus 4:3."
+    "implementation": "512-column fights with expanded display window, floor strips and repeating tile rows. Solid sky/gradient shift-register clears are extended before foreground drawing, fixing the Scorpion\u2019s Lair rectangle. Other stages still require full device testing."
   }
 }
