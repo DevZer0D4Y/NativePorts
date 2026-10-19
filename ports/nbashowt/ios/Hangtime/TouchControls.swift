@@ -17,8 +17,8 @@ enum Style {
 enum ControlID: String, CaseIterable, Codable {
     case stick, shoot, pass, turbo, spin, dunk, shove, coin, start
 
-    // Console games have no coin input. Keep the legacy enum case only for saved layouts.
-    static var available: [ControlID] { allCases.filter { $0 != .coin } }
+    // NBA Showtime is a coin-op arcade cabinet: expose the COIN button so credits can be added.
+    static var available: [ControlID] { allCases }
 
     var action: Action? { Action(rawValue: rawValue) }
     var isPill: Bool { self == .coin || self == .start }
@@ -48,7 +48,7 @@ enum Icon {
         case .turbo: return symbol("bolt.fill", side)
         case .spin: return symbol("hand.raised.fill", side)
         case .shove: return symbol("person.fill", side)
-        case .coin: return symbol("rectangle", side)
+        case .coin: return symbol("centsign.circle.fill", side)
         case .start: return symbol("play.fill", side)
         case .stick: return nil
         }

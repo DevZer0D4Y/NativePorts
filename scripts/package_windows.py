@@ -8,7 +8,7 @@ games=['ssf2t','umk3','slamjam96','thps2','nbashowt'];manifest=[]
 with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as archive:
  for game in games:
   info=plistlib.loads((root/'ports'/game/'ios/Hangtime/Info.plist').read_bytes())
-  names=[game+'.exe','SDL2.dll']+(['libc++.dll','libunwind.dll'] if game=='thps2' else [])
+  names=[game+'.exe','SDL2.dll']+(['libc++.dll','libunwind.dll'] if game in ['thps2','nbashowt'] else [])
   assets=[]
   for name in names:
    p=root/'dist'/game/'windows'/name;data=p.read_bytes()

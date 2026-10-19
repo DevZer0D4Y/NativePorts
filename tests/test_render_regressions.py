@@ -40,38 +40,7 @@ int main(){
  puts("PASS: captured GREATER-depth HUD centered; world geometry, RTT and 4:3 excluded.");
 }
 ''')
-camera=function('vendor/flycast/core/reios/reios.cpp','static bool thps2_follow_camera(')
-run('camera',common+camera+r'''
-int main(){
- std::vector<u8>ram(0x75000);u32 base=0x70700;u16*f=(u16*)(ram.data()+base);
- const unsigned offsets[]={0x8e,0x90,0xb0,0xb4,0xb6,0xb8,0xba,0xbc,0xc0,0xc2,0xc4,0xc6,0xca,0xcc,0xce,0xd0,0xd2};
- const u16 words[]={0xa04b,9,0x51c1,0x5237,0xe7f4,0x312c,0x417c,0x1511,0x5238,0x312c,0x417c,0x1512,0x5239,0x312c,0x966b,0x417c,0x1513};
- for(unsigned i=0;i<sizeof(words)/2;i++)f[offsets[i]/2]=words[i];
- for(unsigned i=0x92;i<=0x9e;i+=2)f[i/2]=9;
- f[0x1a8/2]=0x68c; // original PC-relative literal
- auto original=ram;
- f[0x98/2]=0;assert(!thps2_follow_camera(ram.data())); // occupied cave: refuse
- ram=original;f=(u16*)(ram.data()+base);assert(thps2_follow_camera(ram.data()));
- for(unsigned site:{0xb8u,0xc2u,0xccu})for(int offset:{-1000000,-1,0,1,1000000}){
-  u32 regs[16]={};regs[1]=1200000;regs[2]=offset;regs[7]=(u32)-12;
-  unsigned pc=site,pr=0,steps=0;
-  while(pc!=site+4){
-   assert(++steps<20);u16 op=f[pc/2];
-   if((op&0xf000)==0xb000){int d=(int16_t)(op<<4)>>4;assert(f[(pc+2)/2]==9);pr=pc+4;pc=pc+4+d*2;}
-   else if(op==0x6023){regs[0]=regs[2];pc+=2;}
-   else if(op==0x4021){regs[0]=(int32_t)regs[0]>>1;pc+=2;}
-   else if(op==0x320c){regs[2]+=regs[0];pc+=2;}
-   else if(op==0x312c){regs[1]+=regs[2];pc+=2;}
-   else if(op==0xb){assert(f[(pc+2)/2]==0x417c);regs[1]=(int32_t)regs[1]>>12;pc=pr;}
-   else assert(false);
-  }
-  assert((int32_t)regs[1]==(1200000+offset+(offset>>2))>>12);
-  if(site==0xcc){u16 op=f[0xd0/2];assert((op&0xff00)==0x9600);assert(f[(0xd0+4+(op&255)*2)/2]==0x68c);}
- }
- assert(!thps2_follow_camera(ram.data())); // applied once, never patched twice
- puts("PASS: all three camera axes execute 1.25x follow offsets; literal relocation and signature guards valid.");
-}
-''')
+subprocess.run(['python3', str(root/'tests/test_thps2_camera.py')], check=True)
 sky=function('vendor/mame2003-plus/src/vidhrdw/midtunit_vidhrdw.c','void midtunit_from_shiftreg(')
 run('sky',common+r'''
 using UINT32=u32;using UINT16=u16;

@@ -40,7 +40,10 @@ final class PortScreenView: UIView {
     func upload(_ pixels:UnsafePointer<UInt8>,width:Int,height:Int) {
         frameNumber += 1
         if let gpu {
-            gpu.upload(pixels,width:width,height:height,frameNumber:frameNumber); gpu.draw(); return
+            let started = CACurrentMediaTime()
+            gpu.upload(pixels,width:width,height:height,frameNumber:frameNumber); gpu.draw()
+            ht_render_cpu_time((CACurrentMediaTime() - started) * 1000)
+            return
         }
         let data = Data(bytes:pixels,count:width*height*4)
         if let provider = CGDataProvider(data:data as CFData),

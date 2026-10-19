@@ -139,6 +139,12 @@ final class CRTView: MTKView, MTKViewDelegate {
             let timestamp = drawable.presentedTime
             DispatchQueue.main.async { ht_displayed_frame(timestamp) }
         }
+        c.addCompletedHandler { command in
+            let milliseconds = (command.gpuEndTime - command.gpuStartTime) * 1000
+            if command.gpuEndTime > command.gpuStartTime {
+                DispatchQueue.main.async { ht_render_gpu_time(milliseconds) }
+            }
+        }
         c.present(drawable); c.commit()
     }
 }

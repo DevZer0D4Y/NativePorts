@@ -22,6 +22,9 @@ static void audio_unlock(void) { pthread_mutex_unlock(&audio_mutex); }
 static bool loaded, initialized, ran_frame;
 static bool present_frame = true;
 static unsigned perf_frames, perf_reads, perf_presented;
+static uint64_t video_serial;
+static unsigned perf_render_cpu_count, perf_render_gpu_count;
+static double perf_render_cpu_ms, perf_render_gpu_ms;
 static double perf_first_present, perf_last_present;
 static double perf_core_ms, perf_read_ms, perf_started;
 static double monotonic_ms(void) {
@@ -139,9 +142,9 @@ static void video(const void *data, unsigned w, unsigned h, size_t pitch) {
     if(data==RETRO_HW_FRAME_BUFFER_VALID){
         width=w;height=h;
         double started=monotonic_ms(); hw_read(pixels,w,h);
-        perf_read_ms += monotonic_ms()-started; ++perf_reads; return;
+        perf_read_ms += monotonic_ms()-started; ++perf_reads; ++video_serial; return;
     }
-    width = w; height = h;
+    width = w; height = h; ++video_serial;
     for (unsigned y = 0; y < h; ++y) {
         const uint8_t *row = (const uint8_t *)data + y * pitch;
         for (unsigned x = 0; x < w; ++x) {
@@ -189,6 +192,7 @@ bool ht_start(const char *path, const char *save_directory) {
         fprintf(diagnostic, "THPS2 native boot diagnostics, build 0.3.0\n");
         fclose(diagnostic);
     }
+    video_serial=0; perf_render_cpu_count=perf_render_gpu_count=0; perf_render_cpu_ms=perf_render_gpu_ms=0;
     ran_frame = false; width = height = 0; pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
     perf_frames=perf_reads=perf_presented=0; perf_first_present=perf_last_present=0; perf_core_ms=perf_read_ms=0; perf_started=monotonic_ms();
     memset(buttons, 0, sizeof buttons); ht_audio_clear();
@@ -216,6 +220,11 @@ void ht_run_frame(bool present) {
                 perf_reads ? perf_read_ms/perf_reads : 0, perf_reads);
             log_message(RETRO_LOG_INFO, "DISPLAY: %.1f presented fps; %u new video frames/300 emulated frames",
                 perf_presented>1 && perf_last_present>perf_first_present ? (perf_presented-1)/(perf_last_present-perf_first_present) : 0, perf_reads);
+            log_message(RETRO_LOG_INFO, "PERF DISPLAY: CPU upload/CRT submission %.2f ms/frame; Metal GPU %.2f ms/frame; %u uploads, %u completed GPU frames",
+                perf_render_cpu_count ? perf_render_cpu_ms/perf_render_cpu_count : 0,
+                perf_render_gpu_count ? perf_render_gpu_ms/perf_render_gpu_count : 0,
+                perf_render_cpu_count, perf_render_gpu_count);
+            perf_render_cpu_count=perf_render_gpu_count=0; perf_render_cpu_ms=perf_render_gpu_ms=0;
             perf_frames=perf_reads=perf_presented=0; perf_first_present=perf_last_present=0; perf_core_ms=perf_read_ms=0; perf_started=now;
         }
     }
@@ -240,6 +249,9 @@ void ht_stop(void) { if (loaded && ran_frame) ht_save_data(); if (loaded) {hw_re
 void ht_reset(void) { if (loaded) { if (ran_frame) ht_save_data(); retro_reset(); } }
 void ht_set_buttons(unsigned p, uint16_t b) { if (p < 4) buttons[p] = b; }
 const uint8_t *ht_pixels(void) { return pixels; }
+uint64_t ht_video_serial(void) { return video_serial; }
+void ht_render_cpu_time(double ms) { if (loaded && ms >= 0) { perf_render_cpu_ms += ms; ++perf_render_cpu_count; } }
+void ht_render_gpu_time(double ms) { if (loaded && ms >= 0) { perf_render_gpu_ms += ms; ++perf_render_gpu_count; } }
 unsigned ht_width(void) { return width; }
 unsigned ht_height(void) { return height; }
 double ht_fps(void) { return av.timing.fps > 0 ? av.timing.fps : 59.6374; }

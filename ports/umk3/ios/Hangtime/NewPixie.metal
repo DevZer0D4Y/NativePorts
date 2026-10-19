@@ -63,7 +63,7 @@ float4 newpixie(texture2d<float> backbuffer, texture2d<float> blurbuffer, float2
     col*=float3(0.95,1.05,0.95);
     col=clamp(col*1.3+0.75*col*col+1.25*col*col*col*col*col,float3(0),float3(10));
     float vig=0.01+16.0*curved.x*curved.y*(1.0-curved.x)*(1.0-curved.y);
-    col*=1.3*sqrt(max(vig,0.0));
+    col*=0.80+0.50*sqrt(max(vig,0.0)); /* softened: keep CRT, keep centre, but let the widescreen edges stay visible */
     col*=pow(clamp(0.35+0.18*sin(6.0*time-curved.y*resolution.y*1.5),0.0,1.0),0.9);
     col*=1.0-0.23*clamp(fmod(uv.x*resolution.x,3.0)/2.0,0.0,1.0);
     col=filmic(col);

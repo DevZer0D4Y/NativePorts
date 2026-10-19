@@ -17,6 +17,10 @@ void ht_stop(void);
 void ht_reset(void);
 void ht_set_buttons(unsigned player, uint16_t buttons);
 const uint8_t *ht_pixels(void);
+/* Changes only when the core supplies new pixels; duplicate vblanks keep it. */
+uint64_t ht_video_serial(void);
+void ht_render_cpu_time(double milliseconds);
+void ht_render_gpu_time(double milliseconds);
 unsigned ht_width(void);
 unsigned ht_height(void);
 double ht_fps(void);

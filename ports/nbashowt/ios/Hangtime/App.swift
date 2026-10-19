@@ -22,6 +22,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
         window.makeKeyAndVisible()
     }
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        (window?.rootViewController as? GameViewController)?.foreground()
+    }
     func sceneWillResignActive(_ scene: UIScene) {
         (window?.rootViewController as? GameViewController)?.background()
     }
@@ -38,23 +41,22 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
     private let toast = ToastView()
     private let crtButton = UIButton(type: .system)
     private let gamepads = GamepadHub()
-    private var sequencers = [ActionSequencer](repeating: ActionSequencer(), count: 4)
+    private let emulation = EmulationRunner()
     private var pauseMenu: PauseMenuView?
     private var tutorial: TutorialView?
     private var editor: LayoutEditorView?
     private let audio = AVAudioEngine()
     private var source: AVAudioSourceNode?
     private var displayLink: CADisplayLink?
+    private var pendingROM: URL?
     private var playing = false
     private var paused = false
-    private var previousTime: CFTimeInterval = 0
-    private var accumulated: CFTimeInterval = 0
-    private var lastSave: CFTimeInterval = 0
     /// AUTO touch mode: the last input came from a gamepad, so the touch overlay steps aside.
     private var gamepadInUse = false
     private var coreAspect = 4.0 / 3.0
     private var frameAspect: CGFloat = 400.0 / 254.0
     private let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    deinit { emulation.shutdown() }
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
@@ -86,7 +88,7 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
         crtButton.isHidden = true; view.addSubview(crtButton)
         startScreen.onImport = { [weak self] in self?.importROM() }
         controls.onPause = { [weak self] in self?.openPauseMenu() }
-        controls.onActionPressed = { [weak self] action in self?.sequencers[0].trigger(action) }
+        controls.onActionPressed = { [weak self] action in self?.emulation.trigger(action) }
         controls.onTouch = { [weak self] in self?.touchUsed() }
         gamepads.bindings = settings.padBindings
         gamepads.claimSystemButtons()
@@ -94,21 +96,21 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
         applySettings()
         NotificationCenter.default.addObserver(self, selector: #selector(background), name: UIApplication.willResignActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(background), name: UIApplication.willTerminateNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(background), name: AVAudioSession.interruptionNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(audioInterrupted(_:)), name: AVAudioSession.interruptionNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(controllerConnected), name: .GCControllerDidConnect, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(controllerDisconnected), name: .GCControllerDidDisconnect, object: nil)
         // Ticks run even before a game starts so gamepads can drive the menus.
         let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
         link.add(to: .main, forMode: .common); displayLink = link
-        let existing = documents.appendingPathComponent("nbashowt.bin")
-        if FileManager.default.fileExists(atPath: existing.path) { start(existing) }
+        let existing = documents.appendingPathComponent("nbashowt.zip")
+        if FileManager.default.fileExists(atPath: existing.path) { pendingROM = existing }
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let bounds = view.bounds
         let safe = view.safeAreaInsets
-        crtButton.frame = CGRect(x: bounds.width-safe.right-108,y: safe.top+12,width:96,height:44)
+        crtButton.frame = CGRect(x: max(safe.left, 18), y: max(safe.top, 10) + 64, width: 96, height: 40)
         for overlay in [startScreen, controls, pauseMenu, tutorial, editor] as [UIView?] { overlay?.frame = bounds }
         layoutScreen()
     }
@@ -118,7 +120,7 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
     private func layoutScreen() {
         screen.frame = view.bounds
         screen.fill = settings.screen == .full
-        screen.aspect = settings.screen == .square ? Double(frameAspect) : ht_aspect_ratio()
+        screen.aspect = settings.screen == .square ? Double(frameAspect) : coreAspect
     }
 
     private func applySettings() {
@@ -173,34 +175,50 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
 
     @objc private func importROM() {
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.data], asCopy: true)
-        picker.delegate = self; present(picker, animated: true)
+        picker.allowsMultipleSelection = true; picker.delegate = self; present(picker, animated: true)
     }
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        guard let selected = urls.first else { return }
-        var report = [CChar](repeating: 0, count: 8192)
-        guard ht_validate_rom(selected.path, &report, report.count) else { showError(String(cString: report)); return }
         do {
-            let target = documents.appendingPathComponent("nbashowt.bin")
-            let staging = documents.appendingPathComponent("import.bin")
-            if FileManager.default.fileExists(atPath: staging.path) { try FileManager.default.removeItem(at: staging) }
-            try FileManager.default.copyItem(at: selected, to: staging)
-            if FileManager.default.fileExists(atPath: target.path) { _ = try FileManager.default.replaceItemAt(target, withItemAt: staging) }
-            else { try FileManager.default.moveItem(at: staging, to: target) }
-            start(target)
+            for selected in urls {
+                let isDisk = selected.pathExtension.lowercased() == "chd"
+                var report = [CChar](repeating: 0, count: 8192)
+                let valid = isDisk ? ht_validate_disk(selected.path, &report, report.count) : ht_validate_rom(selected.path, &report, report.count)
+                guard valid else { showError(String(cString: report)); return }
+                let directory = isDisk ? documents.appendingPathComponent("nbashowt", isDirectory: true) : documents
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let target = directory.appendingPathComponent(isDisk ? "nbashowt.chd" : "nbashowt.zip")
+                let staging = documents.appendingPathComponent("import.tmp")
+                if FileManager.default.fileExists(atPath: staging.path) { try FileManager.default.removeItem(at: staging) }
+                try FileManager.default.copyItem(at: selected, to: staging)
+                if FileManager.default.fileExists(atPath: target.path) { _ = try FileManager.default.replaceItemAt(target, withItemAt: staging) }
+                else { try FileManager.default.moveItem(at: staging, to: target) }
+            }
+            let zip = documents.appendingPathComponent("nbashowt.zip")
+            if FileManager.default.fileExists(atPath: zip.path) && FileManager.default.fileExists(atPath: documents.appendingPathComponent("nbashowt/nbashowt.chd").path) { start(zip) }
+            else { showError("Import both nbashowt.zip and nbashowt.chd to play.") }
         } catch { showError(error.localizedDescription) }
     }
 
     private func start(_ url: URL) {
         guard !playing else { return }
-        guard ht_start(url.path, documents.path) else { showError(String(cString: ht_error())); return }
+        // Reserve a performance core for the emulated CPU and leave room for
+        // real-time audio instead of oversubscribing the phone with rasterizers.
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            setenv("OSDWORKQUEUEMAXTHREADS", "1", 0)
+        }
+        let started = emulation.start(url, directory: documents)
+        if let error = started.error { showError(error); return }
         playing = true
+        UIApplication.shared.isIdleTimerDisabled = true
         crtButton.isHidden = false
         startScreen.isHidden = true; controls.isHidden = false
         view.setNeedsLayout()
+        emulation.trace("host thermal=\(ProcessInfo.processInfo.thermalState.rawValue) lowPower=\(ProcessInfo.processInfo.isLowPowerModeEnabled)")
+        emulation.trace("audio setup begin")
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
-            let format = AVAudioFormat(standardFormatWithSampleRate: ht_sample_rate(), channels: 2)!
+            let format = AVAudioFormat(standardFormatWithSampleRate: started.sampleRate, channels: 2)!
             let node = AVAudioSourceNode(format: format) { _, _, count, list -> OSStatus in
                 let buffers = UnsafeMutableAudioBufferListPointer(list)
                 if buffers.count == 2, let l = buffers[0].mData, let r = buffers[1].mData {
@@ -211,6 +229,8 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
             source = node; audio.attach(node); audio.connect(node, to: audio.mainMixerNode, format: format)
             try audio.start()
         } catch { showError("Audio unavailable: \(error.localizedDescription)") }
+        emulation.trace("audio setup end")
+        emulation.setPaused(false)
         if !settings.tutorialSeen {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.showTutorial(fromMenu: false) }
         } else {
@@ -230,44 +250,20 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
         // Skip the tick that closes a menu so the button that closed it never reaches the game.
         let menuWasOpen = pauseMenu != nil || editor != nil
         for event in pads.events { handle(event) }
-        guard playing, !paused, !menuWasOpen, editor == nil else { previousTime = 0; return }
-        if previousTime == 0 { previousTime = link.timestamp; return }
-        accumulated += min(link.timestamp - previousTime, 0.1); previousTime = link.timestamp
-        // While the tutorial is up, gamepad presses page through it instead of reaching the game.
+        guard playing, !paused, !menuWasOpen, editor == nil else { return }
         let players = tutorial == nil ? pads.players : []
-        for (index, player) in players.enumerated() {
-            for action in player.pressed { sequencers[index].trigger(action) }
-            if player.startTap { sequencers[index].pulseStart() }
-        }
-        let interval = 1 / ht_fps()
-        var steps = 0
-        while accumulated >= interval && steps < 4 {
-            for index in 0..<4 {
-                var player = index < players.count ? players[index] : PadState()
-                var sprint = false
-                if index == 0 {
-                    player.held.formUnion(controls.heldActions)
-                    player.directions |= controls.directions
-                    sprint = controls.sprinting
-                }
-                // Controllers join as players 1, 3, 2 and 4: the first two play against each other.
-                ht_set_buttons(UInt32(GamepadHub.playerOrder[index]), sequencers[index].frame(directions: player.directions, held: player.held, sprint: sprint))
-            }
-            ht_run(); accumulated -= interval; steps += 1
-        }
-        if steps == 4 { accumulated = 0 }
-        guard steps > 0 else { return }
-        if link.timestamp - lastSave >= 5 {
-            lastSave = link.timestamp
-            if !ht_save_data() { toast.show("SAVE FAILED") }
-        }
-        let w = Int(ht_width()), h = Int(ht_height())
-        guard w > 0, h > 0, let pixels = ht_pixels() else { return }
-        let aspect = CGFloat(w) / CGFloat(h)
+        emulation.update(players: players, touchHeld: controls.heldActions,
+                         directions: controls.directions, sprint: controls.sprinting)
+        guard let frame = emulation.takeFrame() else { return }
+        if frame.saveFailed { toast.show("SAVE FAILED") }
+        let aspect = CGFloat(frame.width) / CGFloat(frame.height)
         if abs(aspect - frameAspect) > 0.001 { frameAspect = aspect; layoutScreen() }
-        // Widescreen can change the picture's shape without changing its size.
-        if abs(ht_aspect_ratio() - coreAspect) > 0.001 { coreAspect = ht_aspect_ratio(); layoutScreen() }
-        screen.upload(pixels, width: w, height: h)
+        if abs(frame.aspect - coreAspect) > 0.001 { coreAspect = frame.aspect; layoutScreen() }
+        frame.pixels.withUnsafeBytes { bytes in
+            if let pixels = bytes.baseAddress?.assumingMemoryBound(to: UInt8.self) {
+                screen.upload(pixels, width: frame.width, height: frame.height)
+            }
+        }
     }
 
     private func handle(_ event: NavEvent) {
@@ -279,11 +275,11 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
     }
 
     private func setPaused(_ value: Bool) {
-        paused = value; previousTime = 0; accumulated = 0
+        paused = value
+        UIApplication.shared.isIdleTimerDisabled = !value
         controls.releaseAll()
-        for index in 0..<4 { sequencers[index].reset(); ht_set_buttons(UInt32(index), 0) }
-        ht_audio_clear()
-        if value { if playing { _ = ht_save_data() }; audio.pause() } else if playing { try? audio.start() }
+        emulation.setPaused(value)
+        if value { audio.pause() } else if playing { try? audio.start() }
     }
 
     private func openPauseMenu(tab: PauseMenuView.Tab = .game) {
@@ -376,12 +372,25 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
         let alert = UIAlertController(title: "Restart the arcade?", message: "The current game ends. High scores and settings are kept.", preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         alert.addAction(UIAlertAction(title: "Restart", style: .destructive) { [weak self] _ in
-            ht_reset(); self?.closePauseMenu(resume: true)
+            self?.emulation.reset(); self?.closePauseMenu(resume: true)
         })
         present(alert, animated: true)
     }
 
+    fileprivate func foreground() {
+        if let url = pendingROM { pendingROM = nil; start(url) }
+    }
+
+    @objc private func audioInterrupted(_ notification: Notification) {
+        let type = (notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue
+        emulation.trace("audio interruption type: \(String(describing: type))")
+        // An interruption ending must not open the pause menu. Resume remains
+        // the player's choice after a genuine interruption or app switch.
+        if type == AVAudioSession.InterruptionType.began.rawValue { background() }
+    }
+
     @objc fileprivate func background() {
+        emulation.trace("background notification")
         guard playing else { return }
         if pauseMenu == nil && editor == nil && tutorial == nil { openPauseMenu() }
         if !paused { setPaused(true) }

@@ -5,6 +5,7 @@ from pathlib import Path
 
 r = Path(__file__).resolve().parents[1]
 CORES = {
+ 'mame-current': ('libretro/mame', '5f5a07748ce5c239c4118463ce8e6473743d4859', 'mame-current.patch'),
  'mame2003-plus': ('libretro/mame2003-plus-libretro', 'e05caba0aa33cae580d104c45c6caa6406617e3b', 'mame2003-plus.patch'),
  'flycast': ('libretro/flycast', '497de2593bc8bef1a31a3105a0a57f6a059b6ca7', 'flycast.patch'),
  'pcsx': ('libretro/pcsx_rearmed', 'c8816799b50388e61cfe237fe2cdbb7d8175f20a', 'pcsx.patch'),
