@@ -3,8 +3,9 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-/* Core calls on main thread; audio consumer can run on the audio thread. */
+/* Core calls stay on the dedicated emulation thread; audio has its own lock. */
 bool ht_validate_rom(const char *path, char *report, size_t capacity);
+bool ht_validate_disk(const char *path, char *report, size_t capacity);
 bool ht_start(const char *path, const char *directory);
 void ht_run(void);
 bool ht_save_data(void);
@@ -14,6 +15,7 @@ void ht_set_buttons(unsigned player, uint16_t buttons);
 const uint8_t *ht_pixels(void);
 unsigned ht_width(void);
 unsigned ht_height(void);
+uint64_t ht_video_serial(void);
 double ht_fps(void);
 double ht_sample_rate(void);
 double ht_aspect_ratio(void);

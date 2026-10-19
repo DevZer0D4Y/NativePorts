@@ -1,0 +1,432 @@
+--- a/src/mame/williams/vegas.cpp
++++ b/src/mame/williams/vegas.cpp
+@@ -1592,14 +1592,14 @@
+ 	PORT_DIPNAME( 0x0080, 0x0000, "Game Powerup" )
+ 	PORT_DIPSETTING(      0x0080, "NFL Blitz" )
+ 	PORT_DIPSETTING(      0x0000, "NBA Showtime" )
+-	PORT_DIPNAME( 0x0100, 0x0000, "Joysticks" )
++	PORT_DIPNAME( 0x0100, 0x0100, "Joysticks" )
+ 	PORT_DIPSETTING(      0x0100, "8-Way" )
+ 	PORT_DIPSETTING(      0x0000, "49-Way" )
+ 	PORT_DIPNAME( 0x0200, 0x0200, "Graphics Mode" )
+ 	PORT_DIPSETTING(      0x0200, "Med Res" )
+ 	PORT_DIPSETTING(      0x0000, "Low Res" )
+ 	PORT_DIPUNUSED(       0x1c00, 0x1c00 )
+-	PORT_DIPNAME( 0x2000, 0x2000, "Number of Players" )
++	PORT_DIPNAME( 0x2000, 0x0000, "Number of Players" )
+ 	PORT_DIPSETTING(      0x2000, "2" )
+ 	PORT_DIPSETTING(      0x0000, "4" )
+ 	PORT_DIPNAME( 0x4000, 0x0000, "Power On Self Test" )
+--- a/scripts/src/main.lua
++++ b/scripts/src/main.lua
+@@ -165,7 +165,7 @@
+ end
+ 	-- BEGIN libretro overrides to MAME's GENie build
+ 	configuration { "libretro*" }
+-		kind "SharedLib"	
++		kind "StaticLib"	
+ 		targetsuffix "_libretro"
+ 		if _OPTIONS["targetos"]=="android" then
+ 			targetsuffix "_libretro_android"
+@@ -179,17 +179,17 @@
+ 				 "-s EXCEPTION_CATCHING_WHITELIST='[\"__ZN15running_machine17start_all_devicesEv\",\"__ZN12cli_frontend7executeEiPPc\"]'",			}
+ 		elseif _OPTIONS["targetos"]=="ios-arm" or _OPTIONS["LIBRETRO_IOS"]=="1" then
+ 			targetsuffix "_libretro_ios"
+-			targetextension ".dylib"
++			targetextension ".a"
+ 		elseif _OPTIONS["LIBRETRO_TVOS"]=="1" then
+ 			targetsuffix "_libretro_tvos"
+-			targetextension ".dylib"
++			targetextension ".a"
+ 		elseif _OPTIONS["targetos"]=="windows" then
+-			targetextension ".dll"
++			targetextension ".a"
+ 			flags {
+ 				"NoImportLib",
+ 			}
+ 		elseif _OPTIONS["targetos"]=="osx" then
+-			targetextension ".dylib"
++			targetextension ".a"
+ 		else
+ 			targetsuffix "_libretro"
+ 		end
+--- a/Makefile.libretro
++++ b/Makefile.libretro
+@@ -245,7 +245,7 @@
+ 	ARCHOPTS +=-arch $(LIBRETRO_CPU)
+ 	PLATFLAGS +=TARGETOS=macosx
+ 	PLATFLAGS +=PLATFORM=arm64
+-	BUILDFLAGS += OPTIMIZE=s
++	BUILDFLAGS += OPTIMIZE=2
+ 	PTR64 =1
+ 	#this isint needed but it confuses people and they assume ist a x64 instead of arm build when there is a makefile issue
+ 	PLATFLAGS +=macosx_arm64_clang
+@@ -355,3 +355,8 @@
+ 	$(MAKE) $(BUILDFLAGS) $(PLATFLAGS) $(TARGETFLAGS) clean
+ 
+ .PHONY: all build clean vs2019
++
++# Generate the single-driver project before the native frontend flattens its
++# static archives. Avoid starting an unnecessary shared-library build.
++port-generate:
++	$(MAKE) $(BUILDFLAGS) $(filter-out macosx_arm64_clang,$(PLATFLAGS)) $(TARGETFLAGS) generate $(PORT_PROJECT)
+--- a/src/osd/modules/input/input_common.cpp
++++ b/src/osd/modules/input/input_common.cpp
+@@ -28,7 +28,7 @@
+ #define KEY_TRANS_WIN32(disc, virtual)
+ #endif
+ 
+-#if defined(OSD_SDL) || defined(SDLMAME_WIN32)
++#if defined(OSD_SDL) || (defined(SDLMAME_WIN32) && !defined(OSD_RETRO))
+ #ifdef SDLMAME_SDL3
+ #include <SDL3/SDL.h>
+ #else
+--- a/src/devices/cpu/mips/mips3.cpp
++++ b/src/devices/cpu/mips/mips3.cpp
+@@ -14,6 +14,7 @@
+ #include "mips3com.h"
+ #include "mips3dsm.h"
+ #include "mips3fe.h"
++#include "showtimecopy.h"
+ #include "ps2vu.h"
+ 
+ #include "emuopts.h"
+@@ -396,6 +397,15 @@
+ void mips3_device::device_start()
+ {
+ 	m_isdrc = allow_drc();
++#if defined(__LIBRETRO__) && ((defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE) || defined(SHOWTIME_PROFILE_HOST))
++#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
++    // The portable UML backend is slower than the direct interpreter here;
++    // use the measured backend without requiring a launch-time override.
++    if (!strcmp(machine().system().name, "nbashowt")) m_isdrc = false;
++#else
++    if (std::getenv("SHOWTIME_MIPS_INTERPRETER")) m_isdrc = false;
++#endif
++#endif
+ 	m_drc_cache.allocate_cache(mconfig().options().drc_rwx());
+ 
+ 	/* allocate the implementation-specific state from the full cache */
+@@ -1165,7 +1175,7 @@
+ 	/* only applies to the program address space */
+ 	if (spacenum == AS_PROGRAM)
+ 	{
+-		const vtlb_entry *table = vtlb_table();
++		const vtlb_entry *table = vtlb_table_fast();
+ 		vtlb_entry entry = table[address >> MIPS3_MIN_PAGE_SHIFT];
+ 		if ((entry & (1 << intention)) == 0)
+ 			return false;
+@@ -1198,7 +1208,7 @@
+ 
+ inline bool mips3_device::RBYTE(offs_t address, uint32_t *result)
+ {
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & READ_ALLOWED)
+ 	{
+ 		const uint32_t tlbaddress = (tlbval & ~0xfff) | (address & 0xfff);
+@@ -1231,7 +1241,7 @@
+ 
+ inline bool mips3_device::RHALF(offs_t address, uint32_t *result)
+ {
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & READ_ALLOWED)
+ 	{
+ 		const uint32_t tlbaddress = (tlbval & ~0xfff) | (address & 0xfff);
+@@ -1264,7 +1274,7 @@
+ 
+ inline bool mips3_device::RWORD(offs_t address, uint32_t *result, bool insn)
+ {
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & READ_ALLOWED)
+ 	{
+ 		const uint32_t tlbaddress = (tlbval & ~0xfff) | (address & 0xfff);
+@@ -1297,7 +1307,7 @@
+ 
+ inline bool mips3_device::RWORD_MASKED(offs_t address, uint32_t *result, uint32_t mem_mask)
+ {
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & READ_ALLOWED)
+ 	{
+ 		*result = m_program->read_dword((tlbval & ~0xfff) | (address & 0xfff), mem_mask);
+@@ -1320,7 +1330,7 @@
+ 
+ inline bool mips3_device::RDOUBLE(offs_t address, uint64_t *result)
+ {
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & READ_ALLOWED)
+ 	{
+ 		*result = m_program->read_qword((tlbval & ~0xfff) | (address & 0xfff));
+@@ -1343,7 +1353,7 @@
+ 
+ inline bool mips3_device::RDOUBLE_MASKED(offs_t address, uint64_t *result, uint64_t mem_mask)
+ {
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & READ_ALLOWED)
+ 	{
+ 		*result = m_program->read_qword((tlbval & ~0xfff) | (address & 0xfff), mem_mask);
+@@ -1366,7 +1376,7 @@
+ 
+ inline void mips3_device::WBYTE(offs_t address, uint8_t data)
+ {
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & WRITE_ALLOWED)
+ 	{
+ 		const uint32_t tlbaddress = (tlbval & ~0xfff) | (address & 0xfff);
+@@ -1400,7 +1410,7 @@
+ 
+ inline void mips3_device::WHALF(offs_t address, uint16_t data)
+ {
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & WRITE_ALLOWED)
+ 	{
+ 		const uint32_t tlbaddress = (tlbval & ~0xfff) | (address & 0xfff);
+@@ -1434,7 +1444,7 @@
+ 
+ inline void mips3_device::WWORD(offs_t address, uint32_t data)
+ {
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & WRITE_ALLOWED)
+ 	{
+ 		const uint32_t tlbaddress = (tlbval & ~0xfff) | (address & 0xfff);
+@@ -1468,7 +1478,7 @@
+ 
+ inline void mips3_device::WWORD_MASKED(offs_t address, uint32_t data, uint32_t mem_mask)
+ {
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & WRITE_ALLOWED)
+ 	{
+ 		m_program->write_dword((tlbval & ~0xfff) | (address & 0xfff), data, mem_mask);
+@@ -1492,7 +1502,7 @@
+ 
+ inline void mips3_device::WDOUBLE(offs_t address, uint64_t data)
+ {
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & WRITE_ALLOWED)
+ 	{
+ 		m_program->write_qword((tlbval & ~0xfff) | (address & 0xfff), data);
+@@ -1516,7 +1526,7 @@
+ 
+ inline void mips3_device::WDOUBLE_MASKED(offs_t address, uint64_t data, uint64_t mem_mask)
+ {
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & WRITE_ALLOWED)
+ 	{
+ 		m_program->write_qword((tlbval & ~0xfff)  | (address & 0xfff), data, mem_mask);
+@@ -1755,7 +1765,7 @@
+ 		return;
+ 	}
+ 
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & WRITE_ALLOWED)
+ 	{
+ 		m_program->write_qword((tlbval & ~0xfff) | (address & 0xfff), data_lo);
+@@ -1787,7 +1797,7 @@
+ 		return;
+ 	}
+ 
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & WRITE_ALLOWED)
+ 	{
+ 		m_program->write_qword((tlbval & ~0xfff) | (address & 0xfff), data_hi);
+@@ -1879,7 +1889,7 @@
+ 		return true;
+ 	}
+ 
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & READ_ALLOWED)
+ 	{
+ 		*result_lo = m_program->read_qword((tlbval & ~0xfff) | (address & 0xfff));
+@@ -1911,7 +1921,7 @@
+ 		return true;
+ 	}
+ 
+-	const uint32_t tlbval = vtlb_table()[address >> 12];
++	const uint32_t tlbval = vtlb_table_fast()[address >> 12];
+ 	if (tlbval & READ_ALLOWED)
+ 	{
+ 		*result_hi = m_program->read_qword((tlbval & ~0xfff) | (address & 0xfff));
+@@ -5403,10 +5413,71 @@
+ 		debugger_instruction_hook(m_core->pc);
+ 
+ 		/* instruction fetch */
+-		if(!RWORD(m_core->pc, &op, true))
++		#if defined(__LIBRETRO__) && ((defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE) || defined(SHOWTIME_PROFILE_HOST))
++        // R5000 uses the base TLB implementation. Qualify the fetch so clang
++        // can inline its fast-RAM path; other MIPS variants retain overrides.
++        const bool fetched = m_flavor == MIPS3_TYPE_R5000
++            ? mips3_device::RWORD(m_core->pc, &op, true) : RWORD(m_core->pc, &op, true);
++#else
++        const bool fetched = RWORD(m_core->pc, &op, true);
++#endif
++        if (!fetched)
+ 		{
+ 			continue;
+ 		}
++
++#if defined(__LIBRETRO__) && ((defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE) || defined(SHOWTIME_PROFILE_HOST))
++#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
++        static const bool batch_copy = std::getenv("SHOWTIME_DISABLE_COPY_BATCH") == nullptr;
++#else
++        static const bool batch_copy = std::getenv("SHOWTIME_BATCH_COPY") != nullptr;
++#endif
++        if (batch_copy && m_core->pc == 0x800140cc && op == 0x90a20000 &&
++            m_nextpc == ~0 && m_flavor == MIPS3_TYPE_R5000 && !m_byte_xor &&
++            !(machine().debug_flags & DEBUG_FLAG_ENABLED) &&
++            ((SR & SR_KSU_MASK) == SR_KSU_KERNEL || (SR & (SR_EXL | SR_ERL))) &&
++            !strcmp(machine().system().name, "nbashowt")) {
++            static constexpr uint32_t signature[] = {
++                0x90a20000,0x24a50001,0x2463ffff,0xa0820000,0x1466fffb,0x24840001
++            };
++            const auto *code = static_cast<const uint32_t *>(m_prptr(0x140cc));
++            const unsigned n = showtime_copy_count(m_core->r[3], m_core->r[6], m_core->icount);
++            const uint32_t src = uint32_t(m_core->r[5]), dst = uint32_t(m_core->r[4]);
++            if (n && code && !memcmp(code, signature, sizeof(signature)) &&
++                m_core->r[4] == uint64_t(int64_t(int32_t(dst))) &&
++                m_core->r[5] == uint64_t(int64_t(int32_t(src))) &&
++                src >= 0x80000000 && uint64_t(src) + n <= 0x80800000 &&
++                dst >= 0x80000000 && uint64_t(dst) + n <= 0x80800000 &&
++                !(dst < 0x800140e4 && uint64_t(dst) + n > 0x800140cc)) {
++                auto valid_pages = [this](uint32_t address, unsigned bytes, uint32_t permission) {
++                    const uint32_t end = (address + bytes - 1) & ~0xfffu;
++                    for (uint32_t page = address & ~0xfffu;; page += 4096) {
++                        const uint32_t entry = vtlb_table_fast()[page >> 12];
++                        if (!(entry & permission) || (entry & ~0xfffu) != (page & 0x1ffff000)) return false;
++                        if (page == end) return true;
++                    }
++                };
++                if (valid_pages(src, n, READ_ALLOWED) && valid_pages(dst, n, WRITE_ALLOWED)) {
++                    const uint32_t sp = src & 0x1fffffff, dp = dst & 0x1fffffff;
++                    const uint8_t *source = nullptr;
++                    uint8_t *destination = nullptr;
++                    for (int i = 0; i < m_fastram_select; ++i) {
++                        const auto &ram = m_fastram[i];
++                        if (!source && sp >= ram.start && uint64_t(sp) + n - 1 <= ram.end)
++                            source = ram.offset_base8 + sp;
++                        if (!destination && !ram.readonly && dp >= ram.start && uint64_t(dp) + n - 1 <= ram.end)
++                            destination = ram.offset_base8 + dp;
++                    }
++                    if (source && destination) {
++                        showtime_copy_iterations(destination, source, n, m_core->r, m_core->icount);
++                        m_ppc = 0x800140e0;
++                        m_delayslot = false;
++                        continue;
++                    }
++                }
++            }
++        }
++#endif
+ 
+ 		/* adjust for next PC */
+ 		if (m_nextpc != ~0)
+@@ -5595,6 +5666,47 @@
+ 		m_delayslot = false;
+ 		m_core->icount--;
+ 
++#if defined(__LIBRETRO__) && ((defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE) || defined(SHOWTIME_PROFILE_HOST))
++        // Showtime 2.0: this complete, read-only 18-cycle loop polls RAM.
++        // No device callback can update that RAM before the scheduler slice
++        // ends. Batch whole repetitions only, preserving the remaining cycles,
++        // final registers, delay-slot state and the next interrupt boundary.
++#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
++        static const bool batch_poll = std::getenv("SHOWTIME_DISABLE_POLL_BATCH") == nullptr;
++#else
++        static const bool batch_poll = std::getenv("SHOWTIME_BATCH_POLL") != nullptr;
++#endif
++        if (batch_poll && m_ppc == 0x80014530 && m_core->pc == 0x800144dc &&
++            m_nextpc == ~0 && m_flavor == MIPS3_TYPE_R5000 && m_core->icount >= 18 &&
++            !(machine().debug_flags & DEBUG_FLAG_ENABLED) &&
++            !strcmp(machine().system().name, "nbashowt")) {
++            static constexpr uint32_t signature[] = {
++                0x3c028003,0x8c42a270,0x00521023,0x0262102b,0x10400005,0x00000000,
++                0x3c018003,0xac34a54c,0x0c0050e4,0x24040070,
++                0x8e020000,0x00112fc3,0x0045102b,0x1440fff2,0x02202021,
++                0x8e020000,0x14a20006,0x00000000,0x8e02fffc,0x0044102b,0x1440ffeb,0x00000000
++            };
++            const uint32_t ptr = uint32_t(m_core->r[16]);
++            const auto *code = static_cast<const uint32_t *>(m_prptr(0x144dc));
++            const auto *ticks = static_cast<const uint32_t *>(m_prptr(0x2a270));
++            // Both loaded words must be ordinary, aligned cached RAM, with
++            // the exact branch path just executed still selected.
++            if (code && ticks && (ptr & 3) == 0 && ptr >= 0x80000004 && ptr < 0x80800000 &&
++                !memcmp(code, signature, sizeof(signature))) {
++                const auto *hi = static_cast<const uint32_t *>(m_prptr(ptr & 0x1fffffff));
++                const auto *lo = static_cast<const uint32_t *>(m_prptr((ptr - 4) & 0x1fffffff));
++                const uint32_t sign = uint32_t(int32_t(m_core->r[17]) >> 31);
++                if (hi && lo && *hi == sign && *lo < uint32_t(m_core->r[17]) &&
++                    uint32_t(*ticks - uint32_t(m_core->r[18])) <= uint32_t(m_core->r[19]) &&
++                    m_core->r[2] == 1 && m_core->r[4] == m_core->r[17] &&
++                    m_core->r[5] == uint64_t(int64_t(int32_t(sign))))
++                {
++                    m_core->icount %= 18;
++                }
++            }
++        }
++#endif
++
+ 		if (ENABLE_O2_DPRINTF && m_core->pc == 0xbfc04d74)
+ 		{
+ 			do_o2_dprintf((uint32_t)m_core->r[4], (uint32_t)m_core->r[5], (uint32_t)m_core->r[6], (uint32_t)m_core->r[7], (uint32_t)m_core->r[29] + 16);
+--- a/src/emu/divtlb.h
++++ b/src/emu/divtlb.h
+@@ -61,6 +61,8 @@
+ 
+ 	// accessors
+ 	const vtlb_entry *vtlb_table() const;
++	// Direct interpreter accesses do not need an out-of-line call per load.
++	const vtlb_entry *vtlb_table_fast() const { return m_table_base; }
+ 
+ protected:
+ 	// interface-level overrides
+--- /dev/null
++++ b/src/devices/cpu/mips/showtimecopy.h
+@@ -0,0 +1,35 @@
++// license:BSD-3-Clause
++// Signature-checked Showtime byte-copy loop support. No game clocks change.
++#ifndef MAME_CPU_MIPS_SHOWTIMECOPY_H
++#define MAME_CPU_MIPS_SHOWTIMECOPY_H
++#include <algorithm>
++#include <cstdint>
++#include <cstring>
++
++inline unsigned showtime_copy_count(uint64_t counter, uint64_t terminal, int cycles)
++{
++    // v1 starts at length-1; a2 is -1. Leave the last iteration to the
++    // interpreter so its fall-through and delay-slot path remain ordinary.
++    if (terminal != UINT64_MAX || counter == 0 || counter >= 0x800000 || cycles < 6)
++        return 0;
++    return std::min(unsigned(counter), unsigned(cycles / 6));
++}
++
++inline void showtime_copy_iterations(uint8_t *dst, const uint8_t *src,
++                                    unsigned n, uint64_t *r, int &cycles)
++{
++    if (!n) return;
++    uintptr_t d = reinterpret_cast<uintptr_t>(dst), s = reinterpret_cast<uintptr_t>(src);
++    // The guest copies forwards, including overlapping copies with dst>src.
++    // memmove alone would change that case's propagated byte pattern.
++    if (d > s && d - s < n)
++        for (unsigned i = 0; i < n; ++i) dst[i] = src[i];
++    else if (d != s)
++        std::memmove(dst, src, n);
++    r[2] = dst[n - 1];
++    r[3] = uint64_t(int64_t(int32_t(uint32_t(r[3]) - n)));
++    r[4] = uint64_t(int64_t(int32_t(uint32_t(r[4]) + n)));
++    r[5] = uint64_t(int64_t(int32_t(uint32_t(r[5]) + n)));
++    cycles -= int(n * 6);
++}
++#endif

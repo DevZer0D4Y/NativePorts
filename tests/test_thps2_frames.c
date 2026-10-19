@@ -32,7 +32,10 @@ int main(void) {
     for (unsigned step = 0; step < 4; ++step) ht_run_frame(step == 3);
     assert(runs == 4 && reads == 1 && audio_count == 4);
     assert(width == 2 && height == 2 && ran_frame && present_frame);
+    assert(ht_video_serial() == 1);
+    video(NULL, 2, 2, 8); assert(ht_video_serial() == 1);
     ht_run();
+    assert(ht_video_serial() == 2);
     assert(runs == 5 && reads == 2 && audio_count == 5);
     loaded = false;
     ht_run_frame(false);

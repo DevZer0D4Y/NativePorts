@@ -279,11 +279,9 @@ final class PauseMenuView: UIView {
             add(note("CRT FILTER uses the NewPixie shader."))
             add(ActionRow("CONTROLLER TUTORIAL") { [weak self] in self?.onTutorial?() })
             add(ActionRow("RESTART GAME", kind: .destructive) { [weak self] in self?.onRestart?() })
-            add(note("PlayStation. 4 player slots. Game files are supplied separately."))
+            add(note("Arcade. 4 player slots. Game files are supplied separately."))
         case .display:
-            add(ChoiceRow("WIDESCREEN", ["ON", "OFF"], selected: settings.gameWidescreen ? 0 : 1) { [weak self] in
-                self?.settings.gameWidescreen = $0 == 0; changed()
-            })
+            add(note("Original arcade geometry. Expanded gameplay view is in development."))
             add(ChoiceRow("COLOR SIDES", ["ON", "OFF"], selected: settings.colorSides ? 0 : 1) { [weak self] in
                 self?.settings.colorSides = $0 == 0; changed()
             })
@@ -293,7 +291,7 @@ final class PauseMenuView: UIView {
             add(ChoiceRow("PIXELS", ["SHARP", "SMOOTH"], selected: settings.smoothPixels ? 1 : 0) { [weak self] in
                 self?.settings.smoothPixels = $0 == 1; changed()
             })
-            add(note("WIDESCREEN shows more of the court in 3D play, with nothing stretched; movies and picture screens stay 4:3. COLOR SIDES fills unused space. ORIGINAL keeps the monitor proportions; FULL stretches to fill the display."))
+            add(note("COLOR SIDES fills unused space. ORIGINAL keeps the arcade monitor proportions; FULL stretches to fill the display."))
         case .touch:
             add(ChoiceRow("TOUCH CONTROLS", ["AUTO", "ON", "OFF"], selected: settings.touchMode.rawValue) { [weak self] in
                 self?.settings.touchMode = GameSettings.TouchMode(rawValue: $0) ?? .auto; changed()
@@ -783,14 +781,14 @@ final class StartScreenView: UIView {
         gradient.type = .radial; gradient.startPoint = CGPoint(x: 0.5, y: 0.3); gradient.endPoint = CGPoint(x: 1.2, y: 1.3)
         let title = UILabel(); title.text = "NBA Showtime - NBA on NBC"; title.font = Style.display(48); title.adjustsFontSizeToFitWidth = true; title.minimumScaleFactor = 0.35; title.textColor = .white
         title.layer.shadowColor = Style.goldDeep.cgColor; title.layer.shadowOpacity = 0.9; title.layer.shadowRadius = 0; title.layer.shadowOffset = CGSize(width: 3, height: 3)
-        let edition = UILabel(); edition.text = "PlayStation"; edition.font = Style.font(16, .black); edition.textColor = Style.gold
+        let edition = UILabel(); edition.text = "ARCADE"; edition.font = Style.font(16, .black); edition.textColor = Style.gold
         let detail = UILabel(); detail.numberOfLines = 0; detail.textAlignment = .center
-        detail.text = "Import the game disc image (nbashowt.bin) to play. You can also copy it into this app's Documents folder with Finder or the Files app."
+        detail.text = "Import nbashowt.zip and nbashowt.chd to play. You can also copy the ZIP to Documents and the CHD to Documents/nbashowt in the Files app."
         detail.font = .systemFont(ofSize: 14, weight: .medium); detail.textColor = UIColor.white.withAlphaComponent(0.75)
         var config = UIButton.Configuration.filled()
         config.baseBackgroundColor = Style.gold; config.baseForegroundColor = Style.ink
         config.image = UIImage(systemName: "square.and.arrow.down.fill"); config.imagePadding = 8
-        config.attributedTitle = AttributedString("IMPORT nbashowt.bin", attributes: AttributeContainer([.font: Style.font(19)]))
+        config.attributedTitle = AttributedString("IMPORT ARCADE FILES", attributes: AttributeContainer([.font: Style.font(19)]))
         config.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 26, bottom: 12, trailing: 26)
         config.cornerStyle = .capsule
         let button = UIButton(configuration: config)

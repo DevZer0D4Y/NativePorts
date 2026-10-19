@@ -50,6 +50,7 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
     private var previousTime: CFTimeInterval = 0
     private var accumulated: CFTimeInterval = 0
     private var lastSave: CFTimeInterval = 0
+    private var lastVideoSerial: UInt64 = 0
     /// AUTO touch mode: the last input came from a gamepad, so the touch overlay steps aside.
     private var gamepadInUse = false
     private var coreAspect = 4.0 / 3.0
@@ -113,7 +114,7 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
         super.viewDidLayoutSubviews()
         let bounds = view.bounds
         let safe = view.safeAreaInsets
-        crtButton.frame = CGRect(x: bounds.width - safe.right - 108, y: safe.top + 12, width: 96, height: 44)
+        crtButton.frame = CGRect(x: max(safe.left, 18), y: max(safe.top, 10) + 64, width: 96, height: 40)
         for overlay in [startScreen, controls, pauseMenu, tutorial, editor] as [UIView?] { overlay?.frame = bounds }
         layoutScreen()
     }
@@ -200,6 +201,7 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
         guard !playing else { return }
         guard ht_start(url.path, documents.path) else { showError(String(cString: ht_error())); return }
         playing = true
+        lastVideoSerial = 0
         crtButton.isHidden = false
         startScreen.isHidden = true; controls.isHidden = false
         view.setNeedsLayout()
@@ -272,6 +274,12 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
             lastSave = link.timestamp
             if !ht_save_data() { toast.show("SAVE FAILED") }
         }
+        // Dreamcast often produces one picture per two vblanks. Keep the last
+        // drawable on duplicate frames instead of uploading it and running all
+        // four CRT passes again; every newly rendered frame is still shown.
+        let serial = ht_video_serial()
+        guard serial != lastVideoSerial else { return }
+        lastVideoSerial = serial
         let w = Int(ht_width()), h = Int(ht_height())
         guard w > 0, h > 0, let pixels = ht_pixels() else { return }
         let aspect = CGFloat(w) / CGFloat(h)

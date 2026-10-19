@@ -1,9 +1,9 @@
 {
   "title": "NBA Showtime - NBA on NBC",
   "short": "NBAShowtime",
-  "core": "pcsx",
+  "core": "mame-current",
   "players": 4,
-  "rom": "nbashowt.bin",
+  "rom": "nbashowt.zip",
   "labels": [
     "SHOOT / BLOCK",
     "PASS / STEAL",
@@ -15,16 +15,16 @@
     "START"
   ],
   "bits": [
-    2,
     1,
-    8192,
+    256,
+    2,
     0,
-    8194,
-    8193,
+    3,
+    258,
     4,
     8
   ],
-  "revision": "PlayStation USA",
+  "revision": "Arcade 2.0 Apr 25 1999",
   "widescreen_requirement": {
     "reference": "NBA Hangtime 0.4.2 native port",
     "gameplay": "Expanded horizontal view with original object proportions; game-specific drawing, culling, camera and HUD corrections where required.",
@@ -34,7 +34,7 @@
       "Windows"
     ],
     "stretch_satisfies_requirement": false,
-    "status": "implemented_local_gameplay_verified",
+    "status": "arcade_projection_pending",
     "completion_requires": [
       "Verify extra scenery during gameplay without stretching or cropping",
       "Verify camera and object visibility at both edges",
@@ -43,7 +43,7 @@
       "Verify live toggle and original view restoration",
       "Verify with supported game image on iOS and Windows"
     ],
-    "implementation": "368-column PlayStation gameplay expands to a 496-column native canvas with isolated framebuffers; original pixel scale and centered HUD are retained. Picture menus and movies preserve 4:3 with colored external margins."
+    "implementation": "Native arcade aspect retained while arcade projection and clipping are investigated."
   },
   "ui_reference": "NBA Hangtime 0.4.2",
   "controller_defaults": {
@@ -67,5 +67,5 @@
     2,
     4
   ],
-  "input_shortcuts": "Timed double turbo for spin, turbo-leading shoot/pass for dunk/shove; PS1 Square/Cross/R2 layout."
+  "input_shortcuts": "MAME three-button cabinet: Shoot, Pass, Turbo; timed turbo combinations."
 }

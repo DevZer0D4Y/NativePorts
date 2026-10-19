@@ -44,11 +44,21 @@ final class CRTView: MTKView, MTKViewDelegate {
         autoResizeDrawable = false
         clearColor = MTLClearColor(red: 0.055, green: 0.09, blue: 0.18, alpha: 1)
         isUserInteractionEnabled = false
+        NotificationCenter.default.addObserver(self, selector: #selector(thermalChanged),
+            name: ProcessInfo.thermalStateDidChangeNotification, object: nil)
+    }
+    deinit { NotificationCenter.default.removeObserver(self) }
+    @objc private func thermalChanged() {
+        DispatchQueue.main.async { [weak self] in self?.setNeedsLayout() }
     }
     required init(coder: NSCoder) { fatalError("init(coder:) unsupported") }
     override func layoutSubviews() {
         super.layoutSubviews()
-        let scale = min(window?.screen.scale ?? UIScreen.main.scale, 1600 / max(1, max(bounds.width, bounds.height)))
+        // Reduce only the filter's output workload when the phone gets hot.
+        // The emulated framebuffer, view bounds and game proportions stay fixed.
+        let thermal = ProcessInfo.processInfo.thermalState
+        let limit: CGFloat = thermal == .serious || thermal == .critical ? 1024 : thermal == .fair ? 1280 : 1600
+        let scale = min(window?.screen.scale ?? UIScreen.main.scale, limit / max(1, max(bounds.width, bounds.height)))
         drawableSize = CGSize(width: max(1, bounds.width * scale), height: max(1, bounds.height * scale))
     }
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}

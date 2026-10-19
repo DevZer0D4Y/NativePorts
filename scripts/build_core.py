@@ -34,7 +34,10 @@ if a.game in ['ssf2t','umk3']:
  drv='drv_'+a.game
  cmd=['make','-j2','platform='+('win' if win else 'osx'),'INCLUDE_DRV='+drv,'STATIC_LINKING=1','TARGET='+str(lib),'CC='+cc,'AR='+ar,'PLATCFLAGS=-D'+drv+' -DSPLIT_CORE -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-error=incompatible-pointer-types']
  if win:cmd+=['system_platform=win','SPLIT_UP_LINK=0']
-elif a.game in ['slamjam96','nbashowt']:
+elif a.game=='nbashowt':
+ subprocess.run([sys.executable,str(r/'scripts/build_showtime_arcade.py'),a.platform]+(['--toolchain',str(a.toolchain)] if a.toolchain else []),check=True)
+ raise SystemExit(0)
+elif a.game == 'slamjam96':
  src=fetch('pcsx')
  sync(src)
  cmd=['make','-f','Makefile.libretro','-j2','platform='+('win' if win else 'ios-arm64' if ios else 'osx'),'STATIC_LINKING=1','TARGET='+str(lib),'CC='+cc,'CXX='+cxx,'AR='+ar,'DYNAREC=0','HAVE_PHYSICAL_CDROM=0','USE_ASYNC_CDROM=0','USE_ASYNC_GPU=0','USE_ASYNC_SPU=0','NDRC_THREAD=0']

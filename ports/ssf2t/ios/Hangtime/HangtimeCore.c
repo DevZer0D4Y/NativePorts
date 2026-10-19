@@ -85,7 +85,7 @@ static bool environment(unsigned command, void *data) {
 }
 static void video(const void *data, unsigned w, unsigned h, size_t pitch) {
     if (!data || w > 2048 || h > 1024) return;
-    unsigned pad = widescreen_requested && !ssf2t_is_fighting() && w == 384 ? 64 : 0;
+    unsigned pad = widescreen_requested && w == 384 ? 64 : 0;
     width = w + pad * 2; height = h;
     int scene_left = 0, scene_right = (int)w-1;
     if (widescreen_requested && ssf2t_is_fighting() && w == 512)

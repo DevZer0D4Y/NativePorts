@@ -5,19 +5,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #ifdef _WIN32
 #include <windows.h>
 #include <commdlg.h>
+#include <direct.h>
 #include <xinput.h>
 #include <SDL_syswm.h>
 #endif
 
-/* PlayStation: Square shoots, Cross passes, R2 is Turbo. */
-enum { PAD_TURBO = 8192, PAD_PASS = 1, PAD_COIN = 1 << 2, PAD_START = 1 << 3,
-       PAD_UP = 1 << 4, PAD_DOWN = 1 << 5, PAD_LEFT = 1 << 6, PAD_RIGHT = 1 << 7, PAD_SHOOT = 2 };
+/* MAME default order: B shoots, A passes, Y is Turbo. */
+enum { PAD_TURBO = 2, PAD_PASS = 256, PAD_COIN = 1 << 2, PAD_START = 1 << 3,
+       PAD_UP = 1 << 4, PAD_DOWN = 1 << 5, PAD_LEFT = 1 << 6, PAD_RIGHT = 1 << 7, PAD_SHOOT = 1 };
 enum { A_UP, A_DOWN, A_LEFT, A_RIGHT, A_SHOOT, A_PASS, A_TURBO, A_SPIN, A_DUNK, A_SHOVE, A_COIN, A_START, A_COUNT };
-static const char *action_title[A_COUNT] = {"UP","DOWN","LEFT","RIGHT","SHOOT / BLOCK","PASS / STEAL","TURBO","SPIN MOVE","DUNK","SHOVE","SELECT","START"};
-static const char *action_id[A_COUNT] = {"up","down","left","right","shoot","pass","turbo","spin","dunk","shove","select","start"};
+static const char *action_title[A_COUNT] = {"UP","DOWN","LEFT","RIGHT","SHOOT / BLOCK","PASS / STEAL","TURBO","SPIN MOVE","DUNK","SHOVE","COIN","START"};
+static const char *action_id[A_COUNT] = {"up","down","left","right","shoot","pass","turbo","spin","dunk","shove","coin","start"};
 static const uint16_t action_bits[A_COUNT] = {PAD_UP,PAD_DOWN,PAD_LEFT,PAD_RIGHT,PAD_SHOOT,PAD_PASS,PAD_TURBO,0,PAD_TURBO|PAD_SHOOT,PAD_TURBO|PAD_PASS,4,8};
 /* Share and the paddles exist on Xbox Series and Elite controllers. pad_name is what settings.cfg stores,
    pad_title what the controls screen shows (Xbox names). */
@@ -28,7 +30,7 @@ static const char *pad_title[P_COUNT] = {"A","B","X","Y","LB","RB","LT","RT","LS
 /* First two controllers join opposite teams, matching Hangtime. */
 static const unsigned player_port[4] = {0, 2, 1, 3};
 static const SDL_Scancode default_keys[A_COUNT] = {SDL_SCANCODE_UP,SDL_SCANCODE_DOWN,SDL_SCANCODE_LEFT,SDL_SCANCODE_RIGHT,
-    SDL_SCANCODE_X,SDL_SCANCODE_C,SDL_SCANCODE_Z,SDL_SCANCODE_A,SDL_SCANCODE_S,SDL_SCANCODE_D,SDL_SCANCODE_TAB,SDL_SCANCODE_1};
+    SDL_SCANCODE_X,SDL_SCANCODE_C,SDL_SCANCODE_Z,SDL_SCANCODE_A,SDL_SCANCODE_S,SDL_SCANCODE_D,SDL_SCANCODE_5,SDL_SCANCODE_1};
 /* NBA 2K style pad: X shoots, A passes, triggers are Turbo. Start is fixed: tap = START, hold = pause. */
 static const unsigned default_pads[A_COUNT] = {0,0,0,0,1u<<P_X,1u<<P_A,1u<<P_RT|1u<<P_LT|1u<<P_RB,1u<<P_B,1u<<P_Y,1u<<P_LB,1u<<P_BACK,0};
 static SDL_Scancode keys[A_COUNT];
@@ -218,8 +220,7 @@ static void toggle_fullscreen(void) {
     save_config();
 }
 static void toggle_widescreen(void) {
-    game_wide=!game_wide; ht_set_widescreen(game_wide); save_config();
-    show_notice(game_wide ? "WIDESCREEN ON" : "WIDESCREEN OFF");
+    show_notice("ARCADE WIDESCREEN IS IN DEVELOPMENT");
 }
 static void toggle_colorSides(void) {
     colorSides=!colorSides;  save_config();
@@ -245,12 +246,29 @@ static bool copy_file(const char *source,const char *target) {
 }
 static bool load_rom(const char *path) {
     if (running) { message("To change the ROM set, close and reopen the app."); return false; }
+    const char *ext=strrchr(path,'.');
+    if (ext && !SDL_strcasecmp(ext,".chd")) {
+        char report[8192], target[8192];
+        if (!ht_validate_disk(path,report,sizeof report)) { message(report); return false; }
+        snprintf(target,sizeof target,"%snbashowt",save_dir);
+#ifdef _WIN32
+        _mkdir(target);
+#else
+        mkdir(target,0755);
+#endif
+        snprintf(target,sizeof target,"%snbashowt/nbashowt.chd",save_dir);
+        if (strcmp(path,target) && !copy_file(path,target)) { message("Could not copy the disk image."); return false; }
+        snprintf(target,sizeof target,"%snbashowt.zip",save_dir);
+        FILE *zip=fopen(target,"rb");
+        if (zip) { fclose(zip); return load_rom(target); }
+        show_notice("DISK IMPORTED. NOW IMPORT nbashowt.zip"); return false;
+    }
     char report[8192];
     if (!ht_validate_rom(path,report,sizeof report)) { message(report); return false; }
     size_t capacity=strlen(save_dir)+32;
     char *canonical=malloc(capacity), *staging=malloc(capacity);
     if (!canonical || !staging) { free(canonical); free(staging); message("Out of memory."); return false; }
-    snprintf(canonical,capacity,"%snbashowt.bin",save_dir);
+    snprintf(canonical,capacity,"%snbashowt.zip",save_dir);
     snprintf(staging,capacity,"%simport.tmp",save_dir);
     bool ready=true;
     if (strcmp(path,canonical)) {
@@ -271,9 +289,9 @@ static bool load_rom(const char *path) {
     spec.freq=(int)ht_sample_rate(); spec.format=AUDIO_F32SYS; spec.channels=2; spec.samples=1024; spec.callback=audio_callback;
     audio_device=SDL_OpenAudioDevice(NULL,0,&spec,&actual,0);
     if (!audio_device) message(SDL_GetError());
-    SDL_SetWindowTitle(window,"NBA Showtime PS1 0.3.0 - Esc: menu | F1: controls | F8: widescreen | F9: color sides | F10: screen mode | F11: fullscreen");
+    SDL_SetWindowTitle(window,"NBA Showtime Arcade 0.4.6 - Esc: menu | F1: controls | F8: widescreen | F9: color sides | F10: screen mode | F11: fullscreen");
     reset_players(false); set_paused(false);
-    show_notice("PRESS 1 OR CONTROLLER START TO PLAY");
+    show_notice("PRESS 5 FOR COIN, 1 OR CONTROLLER START TO PLAY");
     return true;
 }
 static void choose_file(void) {
@@ -281,11 +299,11 @@ static void choose_file(void) {
     char path[4096]="";
     OPENFILENAMEA dialog={0}; dialog.lStructSize=sizeof dialog;
     dialog.lpstrFile=path; dialog.nMaxFile=sizeof path;
-    dialog.lpstrFilter="Disc images\0*.bin\0\0"; dialog.lpstrTitle="Select the complete nbashowt.bin (PlayStation)";
+    dialog.lpstrFilter="Arcade files\0*.zip;*.chd\0\0"; dialog.lpstrTitle="Select nbashowt.zip or nbashowt.chd";
     dialog.Flags=OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
     if (GetOpenFileNameA(&dialog)) load_rom(path);
 #else
-    message("Drag nbashowt.bin into the window or pass its path on the command line.");
+    message("Drag nbashowt.zip and nbashowt.chd into the window or pass its path on the command line.");
 #endif
 }
 static void update_controllers(void) {
@@ -409,11 +427,11 @@ static void pad_label(int action,char *out,size_t size) {
     if (!out[0]) snprintf(out,size,"-");
 }
 static void draw_pause(void) {
-    header("SHOWTIME 0.3.0","ESC");
+    header("SHOWTIME 0.4.6","ESC");
     char labels[ITEM_COUNT][40];
     snprintf(labels[ITEM_RESUME],40,"RESUME"); snprintf(labels[ITEM_CONTROLS],40,"CONTROLS");
     snprintf(labels[ITEM_CRT],40,"CRT FILTER: < %s >",crtMode_name[crtMode]);
-    snprintf(labels[ITEM_WIDE],40,"WIDESCREEN: %s",game_wide ? "ON" : "OFF");
+    snprintf(labels[ITEM_WIDE],40,"WIDESCREEN: IN DEVELOPMENT");
     snprintf(labels[ITEM_SIDES],40,"COLOR SIDES: %s",colorSides ? "ON" : "OFF");
     snprintf(labels[ITEM_SCREEN],40,"SCREEN: < %s >",screen_name[screen_mode]);
     snprintf(labels[ITEM_FULLSCREEN],40,"FULLSCREEN: %s",fullscreen ? "ON" : "OFF");
@@ -651,7 +669,7 @@ static void run_snapshots(const char *directory) {
     screen_mode=SCREEN_ARCADE; menu=MENU_PAUSE; selection=ITEM_SIDES; snapshot(directory,"menu-pause");
     menu=MENU_CONTROLS; selection=A_TURBO; snapshot(directory,"menu-controls");
     capture=A_SHOOT; selection=A_SHOOT; snapshot(directory,"menu-capture");
-    menu=MENU_NONE; capture=-1; show_notice("PRESS 1 OR CONTROLLER START TO PLAY"); snapshot(directory,"game-notice");
+    menu=MENU_NONE; capture=-1; show_notice("PRESS 5 FOR COIN, 1 OR CONTROLLER START TO PLAY"); snapshot(directory,"game-notice");
     running=false; snapshot(directory,"launcher"); running=true;
     /* the attract demo reaches the court a little later */
     colorSides=true;  notice[0]=0;
@@ -670,7 +688,7 @@ int main(int argc,char **argv) {
     bool snapshots=argc>2 && !strcmp(argv[1],"--snapshot");
     if (argc>2 && !strcmp(argv[1],"--audit")) {
         char report[8192]; bool ok=ht_validate_rom(argv[2],report,sizeof report);
-        printf("%s\n",ok ? "PlayStation ROM set complete and valid." : report); return ok ? 0 : 2;
+        printf("%s\n",ok ? "Arcade ROM chips complete and valid." : report); return ok ? 0 : 2;
     }
 #ifdef _WIN32
     /* Use the native XInput backend for Xbox pads instead of opening the
@@ -682,7 +700,7 @@ int main(int argc,char **argv) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER)) { fprintf(stderr,"%s\n",SDL_GetError()); return 1; }
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,"0");
     bool hidden=smoke || snapshots;
-    window=SDL_CreateWindow("NBA Showtime - NBA on NBC 0.3.0 - Open or drop nbashowt.bin",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,
+    window=SDL_CreateWindow("NBA Showtime - NBA on NBC 0.4.6 - Open or drop nbashowt.zip",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,
                             snapshots ? 1280 : 960,720,SDL_WINDOW_RESIZABLE | (hidden ? SDL_WINDOW_HIDDEN : 0));
     renderer=window ? SDL_CreateRenderer(window,-1,hidden ? SDL_RENDERER_SOFTWARE : SDL_RENDERER_ACCELERATED) : NULL;
     if (!renderer && window) renderer=SDL_CreateRenderer(window,-1,SDL_RENDERER_SOFTWARE);
@@ -711,7 +729,7 @@ int main(int argc,char **argv) {
     } else if (argc>1 && !smoke) load_rom(argv[1]);
     else if (!smoke) {
         char *path=malloc(strlen(save_dir)+32);
-        if (path) { sprintf(path,"%snbashowt.bin",save_dir); FILE *f=fopen(path,"rb"); if (f) { fclose(f); load_rom(path); } free(path); }
+        if (path) { sprintf(path,"%snbashowt.zip",save_dir); FILE *f=fopen(path,"rb"); if (f) { fclose(f); load_rom(path); } free(path); }
     }
     Uint64 frequency=SDL_GetPerformanceFrequency(), previous=SDL_GetPerformanceCounter(), last_save=previous;
     double accumulated=0; bool quit=snapshots; unsigned rendered=0;

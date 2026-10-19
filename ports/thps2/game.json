@@ -43,6 +43,6 @@
       "Verify live toggle and original view restoration",
       "Verify with supported game image on iOS and Windows"
     ],
-    "implementation": "Dreamcast widescreen projection with original 4:3 HUD centered using the actual UI depth band. A signature-checked boot patch increases normal follow-camera offsets by 25%; verified with the USA executable."
+    "implementation": "Dreamcast widescreen projection with original 4:3 HUD centered using the actual UI depth band. A signature-checked boot patch increases the complete eye-to-skater distance by 25%, preserving untracked cameras; verified with the USA executable."
   }
 }

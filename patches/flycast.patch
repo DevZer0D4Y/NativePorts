@@ -182,7 +182,20 @@
  {
 --- a/core/libretro/libretro.cpp
 +++ b/core/libretro/libretro.cpp
-@@ -2565,7 +2565,10 @@
+@@ -245,6 +245,12 @@
+  * retro_run when rendering is not threaded. */
+ static void *emu_thread_func(void *)
+ {
++#if defined(IOS)
++   /* This worker feeds the current display frame. Give Darwin the same
++    * latency intent as the UI thread instead of the default worker QoS. */
++   const bool fast_core = sthread_prefer_fast_cores();
++   NOTICE_LOG(COMMON, "iOS emulation worker: interactive QoS %s", fast_core ? "enabled" : "unavailable");
++#endif
+    rtt_watch_emu_thread();
+    while (emu_baton.WaitForFrame())
+    {
+@@ -2565,7 +2571,10 @@
  #ifndef NO_MMU
      mmu_flush_table();
  #endif
@@ -193,7 +206,7 @@
      custom_texture.Terminate();
  
      result = dc_unserialize(&data_ptr, &total_size, size) ;
-@@ -3810,6 +3813,12 @@
+@@ -3810,6 +3819,12 @@
  int get_mic_data(u8* buffer) { return 0; }
  int push_vmu_screen(u8* buffer) { return 0; }
  
@@ -235,15 +248,16 @@
  /// Creates mappings to the underlying file including mirroring sections
 --- a/core/reios/reios.cpp
 +++ b/core/reios/reios.cpp
-@@ -99,6 +99,35 @@
+@@ -99,6 +99,56 @@
  			| ((v >> 40) & 0x0000FF00)
  			| ((v >> 24) & 0x00FF0000)
  			| ((v >> 8) & 0xFF000000);
 +}
 +
-+/* Patch the follow-camera vector before any game instructions execute.
-+ * The two releases share this instruction sequence; literal offsets can differ.
-+ * Only unused NOPs after an unconditional branch are used for the helper. */
++/* Pull the normal follow camera away from the tracked skater, before the
++ * renderer builds its view matrix. CCamera's own position is already behind
++ * the skater: scaling only its small extra offset mostly moved the picture
++ * vertically. Scale the complete eye-to-skater vector instead. */
 +static bool thps2_follow_camera(u8 *ram)
 +{
 +    for (u32 base=0x70000;base<0x74000;base+=2) {
@@ -254,24 +268,44 @@
 +            f[0xbc/2]!=0x1511 || f[0xc0/2]!=0x5238 ||
 +            f[0xc2/2]!=0x312c || f[0xc4/2]!=0x417c || f[0xc6/2]!=0x1512 ||
 +            f[0xca/2]!=0x5239 || f[0xcc/2]!=0x312c ||
-+            (f[0xce/2]&0xff00)!=0x9600 || f[0xd0/2]!=0x417c || f[0xd2/2]!=0x1513)
++            (f[0xce/2]&0xff00)!=0x9600 || f[0xd0/2]!=0x417c || f[0xd2/2]!=0x1513 ||
++            f[0x198/2]!=0x000b || f[0x19a/2]!=9 || f[0x19c/2]!=0x03b4)
 +            continue;
++        /* Compiler alignment padding after two return/literal pools. The
++         * second pool names this camera function, tying both caves to the
++         * same executable layout. Refuse either occupied region. */
++        u32 linked; memcpy(&linked,ram+base+0x380,sizeof(linked));
++        if(linked != 0x8c000000+base) continue;
 +        bool cave=true;
-+        for(u32 i=0x92/2;i<=0x9e/2;i++) if(f[i]!=9) cave=false;
++        for(u32 i=0x1c4/2;i<0x1e0/2;i++) if(f[i]!=9) cave=false;
++        for(u32 i=0x384/2;i<0x3a0/2;i++) if(f[i]!=9) cave=false;
 +        if(!cave) continue;
-+        const u16 helper[]={0x6023,0x4021,0x4021,0x320c,0x312c,0x000b,0x417c};
-+        memcpy(f+0x92/2,helper,sizeof(helper));
-+        f[0xb8/2]=0xbfeb;f[0xba/2]=9;
-+        f[0xc2/2]=0xbfe6;f[0xc4/2]=9;
++        const u16 setup[]={
++            0x900a, /* tracked-body offset literal */
++            0x00ce, /* mov.l @(r0,r12),r0 */
++            0x2008,0x8903, /* no tracked body: use original eye calculation */
++            0x006e, /* skater x/y/z selected by caller's r6 */
++            0xa0d9,9,9, /* branch to vector calculation */
++            0x312c,0x000b,0x417c,9,0x03b4
++        };
++        const u16 vector[]={
++            0x312c, /* eye = camera base + camera offset */
++            0x6213,0x3208,0x4221,0x4221, /* delta = (eye - skater) / 4 */
++            0x312c,0x000b,0x417c /* eye += delta; return converted */
++        };
++        memcpy(f+0x1c4/2,setup,sizeof(setup));
++        memcpy(f+0x384/2,vector,sizeof(vector));
++        f[0xb8/2]=0xb084;f[0xba/2]=0xe604;
++        f[0xc2/2]=0xb07f;f[0xc4/2]=0xe608;
 +        f[0xd0/2]=f[0xce/2]-1; /* relocate the PC-relative r6 literal load */
-+        f[0xcc/2]=0xbfe1;f[0xce/2]=9;
++        f[0xcc/2]=0xb07a;f[0xce/2]=0xe60c;
 +        return true;
 +    }
 +    return false;
  }
  
  static bool reios_locate_bootfile(const char* bootfile)
-@@ -222,6 +251,11 @@
+@@ -222,6 +272,11 @@
  				descrambl_file(lba + 150, len, GetMemPtr(0x8c010000, 0));
  			else
  				libGDR_ReadSector(GetMemPtr(0x8c010000, 0), lba + 150, (len + 2047) / 2048, 2048);
@@ -279,7 +313,7 @@
 +            if ((!strncmp(ip_meta.product_number,"T13006N",7) ||
 +                 !strncmp(ip_meta.product_number,"T13008D",7)) &&
 +                thps2_follow_camera(GetMemPtr(0x8c000000,0)))
-+                NOTICE_LOG(REIOS,"THPS2 follow camera: 25 percent farther from skater");
++                NOTICE_LOG(REIOS,"THPS2 follow camera: full eye-to-skater distance increased 25 percent");
  
  			delete[] temp;
  
@@ -434,7 +468,35 @@
  	ShaderUniforms.Set(s);
 --- a/core/rend/gles/gltex.cpp
 +++ b/core/rend/gles/gltex.cpp
-@@ -537,6 +537,11 @@
+@@ -193,6 +193,9 @@
+  * changes it puts back. */
+ static void rtt_gl_read(const RttWatch *watch, u8 *rgba)
+ {
++#if defined(IOS)
++    const double perf_start = os_GetSeconds();
++#endif
+ 	GLint was_fbo = 0, was_pack = 4;
+ 	GLuint fbo = 0;
+ 	const u32 w = watch->w, h = watch->h, scale = watch->scale;
+@@ -248,6 +251,17 @@
+ 	glBindFramebuffer(RARCH_GL_FRAMEBUFFER, was_fbo);
+ 	glDeleteFramebuffers(1, &fbo);
+ 	glPixelStorei(GL_PACK_ALIGNMENT, was_pack);
++#if defined(IOS)
++    static unsigned reads;
++    static double total_ms, worst_ms;
++    const double elapsed_ms = (os_GetSeconds() - perf_start) * 1000.0;
++    total_ms += elapsed_ms;
++    worst_ms = std::max(worst_ms, elapsed_ms);
++    if (++reads == 300) {
++        NOTICE_LOG(RENDERER, "PERF RTT: %.2f ms/read, %.2f ms worst; 300 texture readbacks", total_ms / reads, worst_ms);
++        reads = 0; total_ms = worst_ms = 0;
++    }
++#endif
+ }
+ 
+ static void rtt_gl_release(uintptr_t tex)
+@@ -537,6 +551,11 @@
      	texture_data->dirty = 0;
        libCore_vramlock_Lock(texture_data->sa_tex, texture_data->sa + texture_data->size - 1, texture_data);
        rtt_watch_add(&watch, &rtt_gl_backend);
