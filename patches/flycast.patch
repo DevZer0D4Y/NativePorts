@@ -195,7 +195,37 @@
     rtt_watch_emu_thread();
     while (emu_baton.WaitForFrame())
     {
-@@ -2565,7 +2571,10 @@
+@@ -1452,6 +1458,9 @@
+    settings.dreamcast.cable = 3;
+    update_variables(false);
+    dc_reset(true);
++   const bool reset_wide = cheatManager.Reset();
++   if (reset_wide != wide_by_cheat) resize_pending = true;
++   wide_by_cheat = reset_wide;
+    ResetAudioBuffer();
+ 
+ #if !defined(TARGET_NO_THREADS)
+@@ -2158,6 +2167,9 @@
+ 
+ bool retro_load_game(const struct retro_game_info *game)
+ {
++   /* Presentation belongs to this content. A previous game's anamorphic
++    * flag must not survive until the frontend asks for AV information. */
++   wide_by_cheat = false;
+    const char *dir = NULL;
+    const char *vmu_dir = NULL;
+ #ifdef _WIN32
+@@ -2412,6 +2424,9 @@
+    	ERROR_LOG(BOOT, "Flycast emulator initialization failed");
+    	return false;
+    }
++   /* dc_init has now read the disc identity. Choose the actual game patch
++    * here, rather than in an AV query that a frontend can make before load. */
++   wide_by_cheat = cheatManager.Reset();
+    int rotation = rotate_screen ? 3 : 0;
+    if (naomi_cart_GetRotation() == 3)
+       rotation = rotate_screen ? 0 : 1;
+@@ -2565,7 +2580,10 @@
  #ifndef NO_MMU
      mmu_flush_table();
  #endif
@@ -206,7 +236,17 @@
      custom_texture.Terminate();
  
      result = dc_unserialize(&data_ptr, &total_size, size) ;
-@@ -3810,6 +3819,12 @@
+@@ -2722,7 +2740,8 @@
+ 
+ void retro_get_system_av_info(struct retro_system_av_info *info)
+ {
+-   wide_by_cheat = cheatManager.Reset();
++   /* An information query must not reset the cheat's saved original words
++    * or guess its state before the disc identity is available. */
+    if (wide_by_cheat)
+    {
+ 		struct retro_message msg;
+@@ -3810,6 +3829,12 @@
  int get_mic_data(u8* buffer) { return 0; }
  int push_vmu_screen(u8* buffer) { return 0; }
  
@@ -248,12 +288,10 @@
  /// Creates mappings to the underlying file including mirroring sections
 --- a/core/reios/reios.cpp
 +++ b/core/reios/reios.cpp
-@@ -99,6 +99,56 @@
- 			| ((v >> 40) & 0x0000FF00)
- 			| ((v >> 24) & 0x00FF0000)
+@@ -101,6 +101,56 @@
  			| ((v >> 8) & 0xFF000000);
-+}
-+
+ }
+ 
 +/* Pull the normal follow camera away from the tracked skater, before the
 + * renderer builds its view matrix. CCamera's own position is already behind
 + * the skater: scaling only its small extra offset mostly moved the picture
@@ -302,9 +340,11 @@
 +        return true;
 +    }
 +    return false;
- }
- 
++}
++
  static bool reios_locate_bootfile(const char* bootfile)
+ {
+ 	reios_pre_init();
 @@ -222,6 +272,11 @@
  				descrambl_file(lba + 150, len, GetMemPtr(0x8c010000, 0));
  			else
@@ -360,13 +400,14 @@
  
  /*
  
-@@ -99,6 +100,26 @@
+@@ -99,6 +100,32 @@
  	}
  	else
  		glcache.Disable(GL_SCISSOR_TEST);
 +}
 +
-+/* Keep THPS2 screen-space overlays in the centered original 4:3 region. */
++/* Keep THPS2 screen-space overlays in the centered original 4:3 region.
++ * The animated menu wheel uses this same UI plane. */
 +static bool thps2_hud(const PolyParam *gp)
 +{
 +    if (pvrrc.isRTT || !settings.rend.WidescreenGameHacks ||
@@ -376,26 +417,32 @@
 +    const float z = pvrrc.verts.head()[pvrrc.idx.head()[gp->first]].z;
 +    /* THPS2 submits fonts, meters and stance icons in a separate UI depth
 +     * band (7 + a small ordering bias), using GREATER, not ALWAYS. Flat world
-+     * polygons and billboards use other depths and must retain the world FOV. */
-+    if (z < 6.9f || z > 8.0f) return false;
++     * polygons and billboards use other depths and must retain the world FOV.
++     * The SPECIAL meter fill is drawn opaque at 6.77, below the rest of the
++     * band; world geometry stays under 0.01. */
++    if (z < 6.5f || z > 8.0f) return false;
 +    for (u32 i = 0; i < gp->count; ++i) {
 +        const Vertex &v = pvrrc.verts.head()[pvrrc.idx.head()[gp->first + i]];
-+        if (v.z != z || v.x < 0 || v.x > 640 || v.y < 0 || v.y > 480)
++        /* UI can slide or scale beyond the viewport during transitions.
++         * Its clipping bounds must not switch the 4:3 correction on and off:
++         * THPS2's wheel crosses x=0 while entering the main menu. */
++        if (v.z != z)
 +            return false;
 +    }
 +    return true;
  }
  
  template <u32 Type, bool SortingEnabled>
-@@ -138,6 +159,7 @@
+@@ -138,6 +165,8 @@
  								  shadowed);
  
  	glcache.UseProgram(CurrentShader->program);
-+	glUniform1f(CurrentShader->port_hud_scale, thps2_hud(gp) ? 0.75f : 1.0f);
++	const bool port_hud = thps2_hud(gp);
++	glUniform1f(CurrentShader->port_hud_scale, port_hud ? 0.75f : 1.0f);
  	if (CurrentShader->trilinear_alpha != -1)
  		glUniform1f(CurrentShader->trilinear_alpha, ShaderUniforms.trilinear_alpha);
  	if (palette)
-@@ -779,6 +801,7 @@
+@@ -779,6 +808,7 @@
  
  	PipelineShader *shader = GetProgram(false, false, true, false, true, 0, false, 2, false, false, false, false, false);
  	glcache.UseProgram(shader->program);
@@ -403,7 +450,7 @@
  
  	glActiveTexture(GL_TEXTURE0);
  	glcache.BindTexture(GL_TEXTURE_2D, texId);
-@@ -912,6 +935,7 @@
+@@ -912,6 +942,7 @@
  	SetupMainVBO();
  	PipelineShader *shader = GetProgram(0, false, 1, 1, 0, 0, 0, 2, false, false, false, false, false);
  	glcache.UseProgram(shader->program);
@@ -411,7 +458,7 @@
  
  	{
  		struct Vertex vertices[] = {
-@@ -1006,6 +1030,7 @@
+@@ -1006,6 +1037,7 @@
  	SetupMainVBO();
  	PipelineShader *shader = GetProgram(0, false, 1, 1, 0, 0, 0, 2, false, false, false, false, false);
  	glcache.UseProgram(shader->program);
@@ -466,6 +513,26 @@
  	s->shade_scale_factor = glGetUniformLocation(s->program, "shade_scale_factor");
  
  	ShaderUniforms.Set(s);
+--- a/core/rend/gles/gles.h
++++ b/core/rend/gles/gles.h
+@@ -54,6 +54,7 @@
+ 	GLint trilinear_alpha;
+ 	GLint fog_clamp_min, fog_clamp_max;
+ 	GLint normal_matrix;
++	GLint port_hud_scale;
+ 	GLint palette_index;
+ 	GLint shade_scale_factor;
+ 
+@@ -212,6 +213,9 @@
+ 		if (s->fog_clamp_max != -1)
+ 			glUniform4fv(s->fog_clamp_max, 1, fog_clamp_max);
+ 
++		if (s->port_hud_scale != -1)
++			glUniform1f(s->port_hud_scale, 1.f);
++
+ 		if (s->normal_matrix != -1)
+ 			glUniformMatrix4fv(s->normal_matrix, 1, GL_FALSE, normal_mat);
+ 
 --- a/core/rend/gles/gltex.cpp
 +++ b/core/rend/gles/gltex.cpp
 @@ -193,6 +193,9 @@
