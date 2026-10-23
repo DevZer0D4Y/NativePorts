@@ -119,12 +119,12 @@ final class GameViewController: GCEventViewController, UIDocumentPickerDelegate 
         layoutScreen()
     }
 
-    /// FULL stretches to the display, SQUARE keeps square pixels, ARCADE uses the core's arcade monitor aspect
-    /// (4:3, or about 16:9 when colorSides shows the full bitmap).
+    /// Full fills the display; the other modes retain the core's proportions.
+    /// An anamorphic Dreamcast widescreen canvas always uses its declared 16:9 aspect.
     private func layoutScreen() {
         screen.frame = view.bounds
         screen.fill = settings.screen == .full
-        screen.aspect = settings.screen == .square ? Double(frameAspect) : ht_aspect_ratio()
+        screen.aspect = ht_display_aspect(settings.screen == .square)
     }
 
     private func applySettings() {

@@ -189,7 +189,7 @@ bool ht_start(const char *path, const char *save_directory) {
     snprintf(diagnostic_path, sizeof diagnostic_path, "%s/thps2-boot.log", directory);
     FILE *diagnostic = fopen(diagnostic_path, "w");
     if (diagnostic) {
-        fprintf(diagnostic, "THPS2 native boot diagnostics, build 0.3.0\n");
+        fprintf(diagnostic, "THPS2 native boot diagnostics, build 0.4.7\n");
         fclose(diagnostic);
     }
     video_serial=0; perf_render_cpu_count=perf_render_gpu_count=0; perf_render_cpu_ms=perf_render_gpu_ms=0;
@@ -257,6 +257,14 @@ unsigned ht_height(void) { return height; }
 double ht_fps(void) { return av.timing.fps > 0 ? av.timing.fps : 59.6374; }
 double ht_sample_rate(void) { return av.timing.sample_rate > 0 ? av.timing.sample_rate : 48000; }
 double ht_aspect_ratio(void) {return av.geometry.aspect_ratio>0?av.geometry.aspect_ratio:4.0/3.0;}
+double ht_display_aspect(bool square_pixels) {
+    double aspect = ht_aspect_ratio();
+    /* A matched Dreamcast widescreen patch projects 16:9 into 640x480.
+     * Its pixels are anamorphic: presenting that canvas as square pixels
+     * squeezes the entire level. Use the core's declared wide geometry. */
+    bool anamorphic = aspect > 1.7 && aspect < 1.8;
+    return square_pixels && !anamorphic && width && height ? (double)width/height : aspect;
+}
 const char *ht_error(void) { return error_text; }
 void ht_audio_clear(void) { audio_lock(); audio_head = audio_count = 0; audio_unlock(); }
 void ht_audio_read(float *left, float *right, unsigned frames) {

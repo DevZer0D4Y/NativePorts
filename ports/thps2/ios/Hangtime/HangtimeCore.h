@@ -26,6 +26,8 @@ unsigned ht_height(void);
 double ht_fps(void);
 double ht_sample_rate(void);
 double ht_aspect_ratio(void);
+/* Screen mode with the active Dreamcast pixel aspect applied. */
+double ht_display_aspect(bool square_pixels);
 const char *ht_error(void);
 void ht_audio_read(float *left, float *right, unsigned frames);
 void ht_audio_clear(void);

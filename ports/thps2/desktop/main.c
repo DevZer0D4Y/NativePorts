@@ -435,7 +435,7 @@ static void draw_launcher(void) {
 static SDL_Rect game_rect(int width,int height) {
     SDL_Rect rect={0,0,width,height};
     if (screen_mode==SCREEN_FULL) return rect;
-    double aspect=screen_mode==SCREEN_SQUARE ? (double)ht_width()/ht_height() : ht_aspect_ratio();
+    double aspect=ht_display_aspect(screen_mode==SCREEN_SQUARE);
     rect.h=(int)(width/aspect+0.5); rect.w=width;
     if (rect.h>height) { rect.h=height; rect.w=(int)(height*aspect+0.5); }
     rect.x=(width-rect.w)/2; rect.y=(height-rect.h)/2;
@@ -664,7 +664,7 @@ int main(int argc,char **argv) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER)) { fprintf(stderr,"%s\n",SDL_GetError()); return 1; }
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,"0");
     bool hidden=smoke || snapshots;
-    window=SDL_CreateWindow("Tony Hawk’s Pro Skater 2 0.4.1 - Open or drop thps2.chd",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,
+    window=SDL_CreateWindow("Tony Hawk’s Pro Skater 2 0.4.7 - Open or drop thps2.chd",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,
                             snapshots ? 1280 : 960,720,SDL_WINDOW_RESIZABLE | (hidden ? SDL_WINDOW_HIDDEN : 0));
     renderer=window ? SDL_CreateRenderer(window,-1,hidden ? SDL_RENDERER_SOFTWARE : SDL_RENDERER_ACCELERATED) : NULL;
     if (!renderer && window) renderer=SDL_CreateRenderer(window,-1,SDL_RENDERER_SOFTWARE);
